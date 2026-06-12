@@ -226,7 +226,7 @@ style = st.radio("Chart style", ["South Indian", "North Indian"],
                  horizontal=True, key="chart_style")
 
 tabs = st.tabs(["Planets & Houses", "Divisional charts", "Ashtakavarga",
-                "Varshaphala", "Vimshottari Dasha"])
+                "Varshaphala", "Vimshottari Dasha", "Jaimini"])
 
 # ── Tab 1 ─────────────────────────────────────────────────────────────────────
 with tabs[0]:
@@ -347,6 +347,60 @@ with tabs[4]:
                            "Start": f(pad["start"]), "End": f(pad["end"]),
                            "Years": round(pad["years"], 3), "Active": "◄" if pad["active"] else ""}
                           for pad in aad["pratyantardashas"]], hide_index=True, use_container_width=True)
+
+# ── Tab 6: Jaimini ────────────────────────────────────────────────────────────
+with tabs[5]:
+    j = chart["jaimini"]
+    st.caption("Chara Karakas — 8-karaka scheme. Grahas ranked by degrees traversed in "
+               "their sign; **Rahu reckoned in reverse** (30° − degree). AK = highest degree.")
+    jc1, jc2, jc3, jc4 = st.columns(4)
+    jc1.metric("Atmakaraka (soul)", j["atmakaraka"])
+    jc2.metric("Darakaraka (spouse)", j["darakaraka"])
+    jc3.metric("Karakamsha", f"{j['karakamsha']}")
+    jc4.metric("Arudha Lagna", f"{j['arudha_lagna']}")
+    st.dataframe(
+        [{"Karaka": f"{E.CHARA_ABR[r]} · {r}", "Significes": E.CHARA_MEANING[r],
+          "Planet": j["karakas"][r]["planet"], "Sign": j["karakas"][r]["sign"],
+          "Deg in sign": f"{j['karakas'][r]['deg_in_sign']:.2f}°",
+          "Used for ranking": (f"{j['karakas'][r]['effective']:.2f}° (reverse)"
+                               if j["karakas"][r]["reverse"]
+                               else f"{j['karakas'][r]['effective']:.2f}°")}
+         for r in j["order"]],
+        hide_index=True, use_container_width=True)
+    st.markdown(
+        f"<div class='meta'>Karakamsha = Atmakaraka ({j['atmakaraka']}) in Navamsa → "
+        f"<b>{j['karakamsha']}</b> (lord {j['karakamsha_lord']})<br>"
+        f"Arudha Lagna = <b>{j['arudha_lagna']}</b> (lord {j['arudha_lagna_lord']}) · "
+        f"Lagna lord {j['lagna_lord']}</div>", unsafe_allow_html=True)
+    st.write("")
+    st.caption("Navamsa (D9) — Karakamsha is the highlighted sign of the Atmakaraka.")
+    draw_chart(style, "D9 Navamsa", chart["planets"], chart["d9"], chart["d9_lagna"])
+
+    st.divider()
+    cd = chart["chara_dasha"]
+    st.subheader("Chara Dasha (Jaimini sign-based)")
+    st.caption(f"Starts at the Lagna sign at birth · direction: **{cd['direction']}** "
+               "(forward for odd Lagna, reverse for even). Sign duration = (count to its "
+               "lord) − 1 year.")
+    if cd.get("colords"):
+        notes = " · ".join(f"**{sn}** → {v['lord']} ({v['reason']})"
+                           for sn, v in cd["colords"].items())
+        st.caption(f"Dual-lord signs resolved by Chara Bala (Jaimini strength): {notes}")
+    act = next((m for m in cd["mahadashas"] if m["active"]), None)
+    if act:
+        aad = next((a for a in act["antardashas"] if a["active"]), None)
+        st.success(f"**Today:** Chara Mahadasha **{cd['current']}**"
+                   + (f" → Antardasha **{aad['sign']}**" if aad else ""))
+    fd = lambda dt: dt.strftime("%d %b %Y")
+    st.dataframe([{"Rasi": m["sign"], "Start": fd(m["start"]), "End": fd(m["end"]),
+                   "Years": m["years"], "Active": "◄" if m["active"] else ""}
+                  for m in cd["mahadashas"][:12]], hide_index=True, use_container_width=True)
+    if act:
+        st.markdown(f"**Antardashas in {act['sign']} Mahadasha**")
+        st.dataframe([{"Antardasha": f"{act['sign']} / {a['sign']}",
+                       "Start": fd(a["start"]), "End": fd(a["end"]),
+                       "Years": a["years"], "Active": "◄" if a["active"] else ""}
+                      for a in act["antardashas"]], hide_index=True, use_container_width=True)
 
 st.divider()
 st.caption("For study and reflection. Matches Prokerala / astro.com when pyswisseph or "

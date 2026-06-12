@@ -145,14 +145,15 @@ def build_pdf(chart: dict) -> bytes:
 
     story.append(Paragraph("Divisional Charts (South Indian)", h2))
     d1_pl = {p: chart["planets"][p]["sign_idx"] for p in chart["planets"]}
-    charts_row = Table(
-        [[si_table("D1 Rasi", d1_pl, chart["lagna_idx"]),
-          si_table("D9 Navamsa", chart["d9"], chart["d9_lagna"])]],
-        colWidths=[90 * mm, 90 * mm],
-    )
-    charts_row.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"),
-                                    ("LEFTPADDING", (0, 0), (-1, -1), 0)]))
-    story.append(KeepTogether(charts_row))
+    crow = lambda a, b: Table([[a, b]], colWidths=[90 * mm, 90 * mm], style=TableStyle(
+        [("VALIGN", (0, 0), (-1, -1), "TOP"), ("LEFTPADDING", (0, 0), (-1, -1), 0)]))
+    story.append(KeepTogether(crow(
+        si_table("D1 Rasi", d1_pl, chart["lagna_idx"]),
+        si_table("D9 Navamsa", chart["d9"], chart["d9_lagna"]))))
+    story.append(Spacer(1, 3 * mm))
+    story.append(KeepTogether(crow(
+        si_table("D3 Drekkana", chart["d3"], chart["d3_lagna"]),
+        si_table("D10 Dasamsha", chart["d10"], chart["d10_lagna"]))))
 
     # ── ashtakavarga ────────────────────────────────────────────────────────────
     story.append(Paragraph("Ashtakavarga", h2))
@@ -220,6 +221,92 @@ def build_pdf(chart: dict) -> bytes:
         ("TOPPADDING", (0, 0), (-1, -1), 2.5), ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5),
     ]))
     story.append(dt_tbl)
+
+    # active antardashas
+    act = next((md for md in chart["dashas"]["mahadashas"] if md["active"]), None)
+    if act:
+        story.append(Paragraph(f"Antardashas in {act['planet']} Mahadasha", h2))
+        adata = [["Antardasha", "Start", "End", "Years"]]
+        for ad in act["antardashas"]:
+            mk = "  (now)" if ad["active"] else ""
+            adata.append([f"{act['planet']} / {ad['planet']}{mk}",
+                          fmt(ad["start"]), fmt(ad["end"]), f"{ad['years']:.2f}"])
+        adt = Table(adata, repeatRows=1, colWidths=[50*mm, 35*mm, 35*mm, 20*mm])
+        adt.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), paper), ("FONTNAME", (0, 0), (-1, 0), "Times-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 8), ("TEXTCOLOR", (0, 0), (-1, -1), ink),
+            ("GRID", (0, 0), (-1, -1), 0.3, line),
+            ("TOPPADDING", (0, 0), (-1, -1), 2.5), ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5)]))
+        story.append(adt)
+
+    # ── transit strength ────────────────────────────────────────────────────────
+    tr = chart.get("transits", {})
+    if tr:
+        story.append(Paragraph(f"Transit Strength ({chart['transit_date']})", h2))
+        tdata = [["Planet", "Natal", "Transit", "H", "Bindus", "Strength"]]
+        for p in _AKV_PLANETS:
+            nat = chart["planets"][p]["sign_idx"]; tsi = tr.get(p, {}).get("sign_idx", nat)
+            b = chart["ashtakavarga"][p][tsi]
+            s = "strong" if b >= 5 else "average" if b >= 4 else "weak"
+            tdata.append([p, SIGNS[nat], SIGNS[tsi], str((tsi - chart["lagna_idx"]) % 12 + 1),
+                          str(b), s])
+        tt = Table(tdata, repeatRows=1, colWidths=[24*mm, 28*mm, 28*mm, 10*mm, 16*mm, 24*mm])
+        tt.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), paper), ("FONTNAME", (0, 0), (-1, 0), "Times-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 8), ("TEXTCOLOR", (0, 0), (-1, -1), ink),
+            ("GRID", (0, 0), (-1, -1), 0.3, line),
+            ("TOPPADDING", (0, 0), (-1, -1), 2.5), ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5)]))
+        story.append(tt)
+
+    # ── jaimini ─────────────────────────────────────────────────────────────────
+    j = chart.get("jaimini")
+    if j:
+        from astro_engine import CHARA_ABR, CHARA_MEANING
+        story.append(Paragraph("Jaimini — Chara Karakas (8-karaka, incl. Rahu)", h2))
+        story.append(Paragraph(
+            f"Atmakaraka <b>{j['atmakaraka']}</b> · Darakaraka <b>{j['darakaraka']}</b> · "
+            f"Karakamsha <b>{j['karakamsha']}</b> (lord {j['karakamsha_lord']}) · "
+            f"Arudha Lagna <b>{j['arudha_lagna']}</b> (lord {j['arudha_lagna_lord']}). "
+            f"Rahu is reckoned in reverse (30 deg minus its degree).", body))
+        jdata = [["Karaka", "Significes", "Planet", "Sign", "Deg in sign", "Ranking deg"]]
+        for r in j["order"]:
+            k = j["karakas"][r]
+            jdata.append([f"{CHARA_ABR[r]} {r}", CHARA_MEANING[r], k["planet"], k["sign"],
+                          f"{k['deg_in_sign']:.2f}",
+                          f"{k['effective']:.2f}{' (rev)' if k['reverse'] else ''}"])
+        jt = Table(jdata, repeatRows=1,
+                   colWidths=[34*mm, 34*mm, 20*mm, 22*mm, 24*mm, 26*mm])
+        jt.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), paper), ("FONTNAME", (0, 0), (-1, 0), "Times-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 7.5), ("TEXTCOLOR", (0, 0), (-1, -1), ink),
+            ("GRID", (0, 0), (-1, -1), 0.3, line),
+            ("BACKGROUND", (0, 1), (-1, 1), colors.HexColor("#fdf3df")),
+            ("TOPPADDING", (0, 0), (-1, -1), 2.5), ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5)]))
+        story.append(jt)
+
+    # ── chara dasha ─────────────────────────────────────────────────────────────
+    cd = chart.get("chara_dasha")
+    if cd:
+        story.append(Paragraph("Jaimini — Chara Dasha", h2))
+        note = (f"Sign-based dasha from the Lagna at birth; direction: <b>{cd['direction']}</b>. "
+                f"Duration = (count to lord) minus 1 year.")
+        if cd.get("colords"):
+            note += " Dual-lord signs resolved by Chara Bala (Jaimini strength): " + \
+                    "; ".join(f"{sn} -&gt; {v['lord']} ({v['reason']})"
+                              for sn, v in cd["colords"].items()) + "."
+        story.append(Paragraph(note, body))
+        cddata = [["Rasi", "Start", "End", "Years"]]
+        for m in cd["mahadashas"][:12]:
+            mk = "  (now)" if m["active"] else ""
+            cddata.append([m["sign"] + mk, fmt(m["start"]), fmt(m["end"]), str(m["years"])])
+        cdt = Table(cddata, repeatRows=1, colWidths=[40*mm, 35*mm, 35*mm, 20*mm])
+        cdt.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), paper), ("FONTNAME", (0, 0), (-1, 0), "Times-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 8), ("TEXTCOLOR", (0, 0), (-1, -1), ink),
+            ("GRID", (0, 0), (-1, -1), 0.3, line),
+            ("TOPPADDING", (0, 0), (-1, -1), 2.5), ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5)]))
+        story.append(cdt)
+
     story.append(Spacer(1, 6 * mm))
     story.append(Paragraph("Generated by the Vedic Astrology Streamlit app · for study and reflection.", cap))
 

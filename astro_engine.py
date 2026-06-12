@@ -549,6 +549,217 @@ def compute_varshaphala(birth_year:int, birth_month:int, birth_day:int,
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# JAIMINI  (Chara Karakas — 8-karaka scheme including Rahu)
+#
+# Each graha is ranked by the degrees it has traversed within its sign (0–30°),
+# highest first. Rahu is reckoned in REVERSE (30° − deg) because it moves
+# retrograde — this is what "taking Rahu into account" means and is the
+# difference between the 7-karaka (no Rahu) and 8-karaka schemes.
+#   1 Atmakaraka (AK)   soul / self          highest degree
+#   2 Amatyakaraka(AmK) career / advisor
+#   3 Bhratrikaraka(BK) siblings
+#   4 Matrikaraka (MK)  mother
+#   5 Pitrikaraka (PiK) father
+#   6 Putrakaraka (PuK) children
+#   7 Gnatikaraka (GK)  cousins / obstacles
+#   8 Darakaraka (DK)   spouse               lowest degree
+# ══════════════════════════════════════════════════════════════════════════════
+
+CHARA_KARAKAS_8 = ["Atmakaraka", "Amatyakaraka", "Bhratrikaraka", "Matrikaraka",
+                   "Pitrikaraka", "Putrakaraka", "Gnatikaraka", "Darakaraka"]
+CHARA_ABR = {"Atmakaraka": "AK", "Amatyakaraka": "AmK", "Bhratrikaraka": "BK",
+             "Matrikaraka": "MK", "Pitrikaraka": "PiK", "Putrakaraka": "PuK",
+             "Gnatikaraka": "GK", "Darakaraka": "DK"}
+CHARA_MEANING = {"Atmakaraka": "soul / self", "Amatyakaraka": "career / advisor",
+                 "Bhratrikaraka": "siblings", "Matrikaraka": "mother",
+                 "Pitrikaraka": "father", "Putrakaraka": "children",
+                 "Gnatikaraka": "cousins / obstacles", "Darakaraka": "spouse"}
+
+
+def _arudha(house_si: int, lord_si: int) -> int:
+    """Arudha pada of a sign: count house→lord, same count from lord; 1st/7th → 10th."""
+    al = (2 * lord_si - house_si) % 12
+    if al == house_si or al == (house_si + 6) % 12:
+        al = (al + 9) % 12   # 10th from the computed pada
+    return al
+
+
+def compute_jaimini(lons: Dict[str, float], lagna_si: int) -> Dict:
+    """Chara Karakas (8, including Rahu), Karakamsha, and Arudha Lagna."""
+    grahas = ["Sun", "Moon", "Mars", "Mercury", "Jupiter", "Venus", "Saturn", "Rahu"]
+    scored = []
+    for g in grahas:
+        deg = lons[g] % 30
+        eff = (30 - deg) if g == "Rahu" else deg     # Rahu reckoned in reverse
+        scored.append((g, eff, deg))
+    scored.sort(key=lambda x: x[1], reverse=True)
+
+    karakas, karaka_of = {}, {}
+    for i, (g, eff, deg) in enumerate(scored):
+        role = CHARA_KARAKAS_8[i]
+        si, sn, _ = sign_of(lons[g])
+        karakas[role] = {"planet": g, "sign": sn, "sign_idx": si,
+                         "deg_in_sign": round(deg, 4), "effective": round(eff, 4),
+                         "reverse": g == "Rahu"}
+        karaka_of[g] = role
+
+    ak = karakas["Atmakaraka"]["planet"]
+    dk = karakas["Darakaraka"]["planet"]
+    karakamsha_si = navamsa_sign(lons[ak])              # AK's navamsa sign
+
+    lagna_lord = SIGN_LORDS[SIGNS[lagna_si]]
+    lord_si = sign_of(lons[lagna_lord])[0]
+    al_si = _arudha(lagna_si, lord_si)
+
+    return {
+        "order": CHARA_KARAKAS_8,
+        "karakas": karakas,
+        "karaka_of": karaka_of,
+        "atmakaraka": ak,
+        "darakaraka": dk,
+        "karakamsha_si": karakamsha_si,
+        "karakamsha": SIGNS[karakamsha_si],
+        "karakamsha_lord": SIGN_LORDS[SIGNS[karakamsha_si]],
+        "arudha_lagna_si": al_si,
+        "arudha_lagna": SIGNS[al_si],
+        "arudha_lagna_lord": SIGN_LORDS[SIGNS[al_si]],
+        "lagna_lord": lagna_lord,
+    }
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# CHARA DASHA  (Jaimini sign-based dasha — K.N. Rao method)
+#
+#  • Start at the Lagna sign at birth.
+#  • Sequence direction: forward (zodiacal) if Lagna is an ODD sign
+#    (Aries, Gemini, Leo, Libra, Sagittarius, Aquarius), else backward.
+#  • Duration of a sign = (count from the sign to its lord) − 1 year, where the
+#    count direction is forward for odd signs and backward for even signs; a
+#    count of 1 (lord in the sign) gives 12 years.
+#  • Dual-ruled signs: Scorpio (Mars/Ketu), Aquarius (Saturn/Rahu) — the longer
+#    of the two co-lord periods is used (a common convention; schools vary).
+#  • Antardashas: each = mahadasha/12, starting from the mahadasha sign and
+#    moving in that sign's own direction (its odd/even nature).
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _chara_odd(si: int) -> bool:
+    """Odd sign? Aries, Gemini, Leo, Libra, Sagittarius, Aquarius (0-based even index)."""
+    return si % 2 == 0
+
+def _chara_count(from_si: int, to_si: int, direct: bool) -> int:
+    return ((to_si - from_si) % 12 + 1) if direct else ((from_si - to_si) % 12 + 1)
+
+# ── Jaimini sign-strength helpers (Chara Bala) ────────────────────────────────
+_MOVABLE = {0, 3, 6, 9}    # Aries, Cancer, Libra, Capricorn
+_FIXED   = {1, 4, 7, 10}   # Taurus, Leo, Scorpio, Aquarius
+_DUAL    = {2, 5, 8, 11}   # Gemini, Virgo, Sagittarius, Pisces
+_BALA_GRAHAS = ["Sun", "Moon", "Mars", "Mercury", "Jupiter", "Venus", "Saturn", "Rahu", "Ketu"]
+
+def _rasi_aspects(si: int) -> List[int]:
+    """Signs aspected by the sign at si (Jaimini Rasi Drishti)."""
+    if si in _MOVABLE:
+        nxt = (si + 1) % 12
+        return [s for s in _FIXED if s != nxt]      # movable → fixed, minus the next sign
+    if si in _FIXED:
+        prev = (si - 1) % 12
+        return [s for s in _MOVABLE if s != prev]   # fixed → movable, minus the previous sign
+    return [s for s in _DUAL if s != si]            # dual → the other dual signs
+
+def _conjunct_count(ps: Dict[str, int], p: str) -> int:
+    return sum(1 for q in _BALA_GRAHAS if q != p and ps.get(q) == ps[p])
+
+def _aspect_count(ps: Dict[str, int], p: str) -> int:
+    si = ps[p]
+    return sum(1 for q in _BALA_GRAHAS if q != p and si in _rasi_aspects(ps[q]))
+
+def _dignity_rank(p: str, ps: Dict[str, int], lons: Dict[str, float]) -> int:
+    d = dignity_of(p, ps[p], lons[p] % 30)
+    if d.startswith("Exalted"):     return 3
+    if d == "Moolatrikona":         return 2
+    if d == "Own Sign":             return 1
+    if d == "Debilitated":          return -1
+    return 0
+
+def stronger_colord(sign_si: int, a: str, b: str,
+                    ps: Dict[str, int], lons: Dict[str, float]) -> Tuple[str, str]:
+    """Pick the stronger co-lord by Jaimini criteria, in order. Returns (lord, reason)."""
+    in_a, in_b = ps[a] == sign_si, ps[b] == sign_si
+    if in_a != in_b:
+        return (a, "in the sign") if in_a else (b, "in the sign")
+    ca, cb = _conjunct_count(ps, a), _conjunct_count(ps, b)
+    if ca != cb:
+        return (a if ca > cb else b, "more conjunctions")
+    aa, ab = _aspect_count(ps, a), _aspect_count(ps, b)
+    if aa != ab:
+        return (a if aa > ab else b, "more aspects (rasi drishti)")
+    da, db = _dignity_rank(a, ps, lons), _dignity_rank(b, ps, lons)
+    if da != db:
+        return (a if da > db else b, "dignity")
+    ga, gb = lons[a] % 30, lons[b] % 30
+    if abs(ga - gb) > 1e-9:
+        return (a if ga > gb else b, "higher degree")
+    return (b, "tie → node")   # deterministic final fallback
+
+def _chara_years(sign_si: int, ps: Dict[str, int],
+                 lons: Dict[str, float]) -> Tuple[int, str, str]:
+    """Return (years, lord_used, reason). reason is '' for single-lord signs."""
+    direct = _chara_odd(sign_si)
+    sn = SIGNS[sign_si]
+    if sn == "Scorpio":
+        lord, reason = stronger_colord(sign_si, "Mars", "Ketu", ps, lons)
+    elif sn == "Aquarius":
+        lord, reason = stronger_colord(sign_si, "Saturn", "Rahu", ps, lons)
+    else:
+        lord, reason = SIGN_LORDS[sn], ""
+    y = _chara_count(sign_si, ps[lord], direct) - 1
+    return (12 if y == 0 else y), lord, reason
+
+def _chara_antardashas(maha_si: int, maha_years: float, start_dt: datetime,
+                       today: datetime) -> List[Dict]:
+    direct = _chara_odd(maha_si)
+    sub = maha_years / 12.0
+    out, cur = [], start_dt
+    for i in range(12):
+        si = (maha_si + i) % 12 if direct else (maha_si - i) % 12
+        end = cur + timedelta(days=sub * 365.25)
+        out.append({"sign": SIGNS[si], "sign_idx": si, "start": cur, "end": end,
+                    "years": round(sub, 3), "active": cur <= today < end})
+        cur = end
+    return out
+
+def build_chara_dasha(planet_signs: Dict[str, int], lons: Dict[str, float],
+                      lagna_si: int, birth_dt: datetime, span_years: float = 120.0) -> Dict:
+    direct = _chara_odd(lagna_si)
+    order = [((lagna_si + i) % 12 if direct else (lagna_si - i) % 12) for i in range(12)]
+
+    durations, colords = {}, {}
+    for si in range(12):
+        yrs, lord, reason = _chara_years(si, planet_signs, lons)
+        durations[si] = yrs
+        if SIGNS[si] in ("Scorpio", "Aquarius"):
+            colords[SIGNS[si]] = {"lord": lord, "reason": reason}
+
+    today = datetime.now()
+    mahas, cur, total, idx, current = [], birth_dt, 0.0, 0, None
+    while total < span_years:
+        si = order[idx % 12]
+        yrs = durations[si]
+        end = cur + timedelta(days=yrs * 365.25)
+        active = cur <= today < end
+        mahas.append({"sign": SIGNS[si], "sign_idx": si, "start": cur, "end": end,
+                      "years": yrs, "active": active,
+                      "antardashas": _chara_antardashas(si, yrs, cur, today)})
+        if active:
+            current = SIGNS[si]
+        cur = end; total += yrs; idx += 1
+
+    return {"mahadashas": mahas, "current": current,
+            "direction": "direct (zodiacal)" if direct else "reverse",
+            "durations": {SIGNS[si]: durations[si] for si in range(12)},
+            "colords": colords}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # GEOCODING  (Nominatim → IANA timezone → zoneinfo for historical DST)
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -640,6 +851,11 @@ def generate_chart(year:int, month:int, day:int, hour:int, minute:int,
         year, month, day, lons["Sun"], lagna_idx,
         lat, lon, datetime.now().year)
 
+    jaimini = compute_jaimini(lons, lagna_idx)
+    chara_dasha = build_chara_dasha(
+        {p: planets[p]["sign_idx"] for p in planets if p != "Ascendant"},
+        lons, lagna_idx, local_dt.replace(tzinfo=None))
+
     ah,am = int(abs(tz_offset)), int(round((abs(tz_offset)%1)*60))
     sgn   = "+" if tz_offset>=0 else "-"
 
@@ -667,6 +883,8 @@ def generate_chart(year:int, month:int, day:int, hour:int, minute:int,
         "d10": d10, "d10_lagna": d10["Ascendant"],
         "dashas":      build_dashas(lons["Moon"], local_dt.replace(tzinfo=None)),
         "varshaphala": varshaphala,
+        "jaimini":     jaimini,
+        "chara_dasha": chara_dasha,
     }
 
 
