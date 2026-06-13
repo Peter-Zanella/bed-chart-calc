@@ -672,10 +672,11 @@ if st.sidebar.button("✦ Generate chart", type="primary", use_container_width=T
     else:
         st.session_state["active_params"] = pending
 
-# tell the user when the displayed chart no longer matches the sidebar inputs
-_active = st.session_state.get("active_params")
-if _active and pending and pending != _active:
-    st.sidebar.info("Inputs changed — press ✦ Generate chart to update.")
+# once a chart exists, keep it in sync with the sidebar automatically —
+# changing the location (or any input) updates the chart with no extra click
+if st.session_state.get("active_params") and pending and \
+        pending != st.session_state["active_params"]:
+    st.session_state["active_params"] = pending
 
 
 # ──────────────────────────────────────────────────────────────────────────────
