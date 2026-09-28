@@ -932,6 +932,11 @@ def make_pdf(params: dict, compat_json: str = "") -> bytes:
     compat = json.loads(compat_json) if compat_json else None
     return build_pdf(compute(params), compat)
 
+@st.cache_data(show_spinner=False)
+def varshaphala(y: int, mo: int, d: int, sun_lon: float, lagna_si: int,
+                lat: float, lon: float, target_year: int):
+    return E.compute_varshaphala(y, mo, d, sun_lon, lagna_si, lat, lon, target_year)
+
 @st.cache_data(show_spinner=False, ttl=86400)
 def resolve_city(city: str, y: int, mo: int, d: int, h: int, mi: int):
     # cached across sessions so the same place isn't geocoded repeatedly
@@ -1373,6 +1378,9 @@ with st.expander("Chart metadata"):
 style = st.radio("Chart style", ["South Indian", "North Indian"],
                  horizontal=True, key="chart_style")
 
+# per-chart suffix so year/dasha pickers reset when another chart is loaded
+_ckey = f"{ap['year']}{ap['month']:02d}{ap['day']:02d}{ap['hour']:02d}{ap['minute']:02d}_{ap['lat']:.2f}_{ap['lon']:.2f}"
+
 tabs = st.tabs(["Planets & Houses", "Divisional charts", "Ashtakavarga",
                 "Varshaphala", "Vimshottari Dasha", "Jaimini", "Transits", "Panchang",
                 "Yogas", "Muhurta", "Compatibility", "Shad Bala",
@@ -1481,6 +1489,12 @@ with tabs[2]:
 # ── Tab 4 ─────────────────────────────────────────────────────────────────────
 with tabs[3]:
     vp = chart["varshaphala"]
+    _vy = st.number_input("Year (solar return)", min_value=ap["year"], max_value=ap["year"] + 120,
+                          value=vp["target_year"], step=1, key=f"varsha_year_{_ckey}",
+                          help=f"Default is the running year ({vp['target_year']}–{vp['target_year']+1}).")
+    if _vy != vp["target_year"]:
+        vp = varshaphala(ap["year"], ap["month"], ap["day"], chart["planets"]["Sun"]["lon"],
+                         chart["lagna_idx"], ap["lat"], ap["lon"], int(_vy))
     x, y, z = st.columns(3)
     x.metric(f"Year {vp['year_number']}", f"{vp['target_year']}–{vp['target_year']+1}")
     y.metric("Annual Lagna", f"{vp['lagna']} {vp['lagna_pos']}")
@@ -1517,20 +1531,27 @@ with tabs[4]:
     st.dataframe([{"Planet": md["planet"], "Start": f(md["start"]), "End": f(md["end"]),
                    "Years": round(md["years"], 1), "Active": "◄" if md["active"] else ""}
                   for md in mahas], hide_index=True, use_container_width=True)
-    act = next((md for md in mahas if md["active"]), None)
-    if act:
-        st.subheader(f"Antardashas in {act['planet']} Mahadasha")
-        st.dataframe([{"Antardasha": f"{act['planet']} / {ad['planet']}",
-                       "Start": f(ad["start"]), "End": f(ad["end"]),
-                       "Years": round(ad["years"], 2), "Active": "◄" if ad["active"] else ""}
-                      for ad in act["antardashas"]], hide_index=True, use_container_width=True)
-        aad = next((ad for ad in act["antardashas"] if ad["active"]), None)
-        if aad:
-            st.subheader(f"Pratyantardashas in {act['planet']} / {aad['planet']}")
-            st.dataframe([{"Pratyantardasha": f"{act['planet']} / {aad['planet']} / {pad['planet']}",
-                           "Start": f(pad["start"]), "End": f(pad["end"]),
-                           "Years": round(pad["years"], 3), "Active": "◄" if pad["active"] else ""}
-                          for pad in aad["pratyantardashas"]], hide_index=True, use_container_width=True)
+    _mlabel = lambda md: (f"{md['planet']} · {f(md['start'])} – {f(md['end'])}"
+                          + (" ◄ now" if md["active"] else ""))
+    _mi = next((i for i, md in enumerate(mahas) if md["active"]), 0)
+    act = mahas[st.selectbox("Mahadasha", range(len(mahas)), index=_mi,
+                             format_func=lambda i: _mlabel(mahas[i]), key=f"dasha_maha_{_ckey}")]
+    st.subheader(f"Antardashas in {act['planet']} Mahadasha")
+    st.dataframe([{"Antardasha": f"{act['planet']} / {ad['planet']}",
+                   "Start": f(ad["start"]), "End": f(ad["end"]),
+                   "Years": round(ad["years"], 2), "Active": "◄" if ad["active"] else ""}
+                  for ad in act["antardashas"]], hide_index=True, use_container_width=True)
+    ads = act["antardashas"]
+    if ads:
+        _ai = next((i for i, ad in enumerate(ads) if ad["active"]), 0)
+        aad = ads[st.selectbox("Antardasha", range(len(ads)), index=_ai,
+                               format_func=lambda i: _mlabel(ads[i]),
+                               key=f"dasha_antar_{_ckey}_{act['start']:%Y%m%d}")]
+        st.subheader(f"Pratyantardashas in {act['planet']} / {aad['planet']}")
+        st.dataframe([{"Pratyantardasha": f"{act['planet']} / {aad['planet']} / {pad['planet']}",
+                       "Start": f(pad["start"]), "End": f(pad["end"]),
+                       "Years": round(pad["years"], 3), "Active": "◄" if pad["active"] else ""}
+                      for pad in aad["pratyantardashas"]], hide_index=True, use_container_width=True)
 
 # ── Tab 6: Jaimini ────────────────────────────────────────────────────────────
 with tabs[5]:
