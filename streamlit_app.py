@@ -4,6 +4,7 @@
 # the calculations. Run: streamlit run streamlit_app.py
 
 from datetime import date, datetime, time as dtime, timezone, timedelta
+from html import escape
 from io import BytesIO
 import json, os
 
@@ -256,6 +257,12 @@ def _have_reportlab() -> bool:
     except ImportError:
         return False
 
+
+_IAST_FOLD = str.maketrans("āīūṛṝḷṭḍṇśṣṃḥĀĪŪṬḌṆŚṢṂḤ", "aiurrltdnssmhAIUTDNSSMH")
+
+def _pdf_text(t: str) -> str:
+    """The built-in PDF fonts are Latin-1 only; fold IAST diacritics and escape markup."""
+    return escape(t.translate(_IAST_FOLD))
 
 def build_pdf(chart: dict, compat: dict = None) -> bytes:
     if not _have_reportlab():
@@ -759,7 +766,7 @@ def build_pdf(chart: dict, compat: dict = None) -> bytes:
             f"<b>{compat['b_name']}</b> (Moon {compat['b_moon']}"
             + (f", {compat['b_loc']}" if compat.get("b_loc") else "") + ")", body))
         tot = compat["total"]; mx = compat.get("max", 36)
-        vhex = _P_GOOD if tot >= 25 else _P_WARN if tot >= 18 else _P_BAD
+        vhex = _P_GOOD if tot >= 21 else _P_WARN if tot >= 18 else _P_BAD
         story.append(Spacer(1, 2 * mm))
         story.append(Paragraph(
             f"<b>Guna Milan:</b> <font color='{vhex}'>{tot:g} / {mx} — {compat['verdict']}</font>"
@@ -787,6 +794,10 @@ def build_pdf(chart: dict, compat: dict = None) -> bytes:
                     f"— {d['reason']}.", body))
         if not compat.get("doshas"):
             story.append(Paragraph("No Nadi or Bhakoot dosha.", body))
+        for x in compat.get("extra", []):
+            story.append(Paragraph(
+                f"<b>{x['name']}:</b> <font color='{_P_GOOD if x['ok'] else _P_WARN}'>"
+                f"{_pdf_text(x['verdict'])}</font>", body))
         mg = compat.get("mangal")
         if mg and mg.get("a") and mg.get("b"):
             a_m, b_m = mg["a"]["manglik"], mg["b"]["manglik"]
@@ -874,6 +885,47 @@ st.markdown("""
 @st.cache_data(show_spinner=False)
 def compute(params: dict):
     return E.generate_chart(**params)
+
+_VERDICT_EN = {"exc": "Excellent", "good": "Good", "ok": "Acceptable", "low": "Challenging"}
+_EXTRA_NAMES = {"vedha": "Vedha", "rajju": "Rajju", "stri_dirgha": "Stri-Dirgha",
+                "rasi_kuta": "Rasi Kuta"}
+
+def _compat_view(full: dict) -> dict:
+    """Flatten E.compute_compatibility() into the shape the tab and the PDF render."""
+    ash = full["ashtakuta"]
+    ma, mb = ash["moon_a"], ash["moon_b"]
+    la, lb = SIGN_LORDS[ma["sign"]], SIGN_LORDS[mb["sign"]]
+    doshas = []
+    if ash["nadi_dosha"]:
+        canc = None
+        if ma["sign"] == mb["sign"] and ma["nak"] != mb["nak"]:
+            canc = "same Moon sign but different nakshatra"
+        elif la == lb or lb in E._FRIEND.get(la, {}).get("friends", ()):
+            canc = "Moon-sign lords are the same / friends"
+        doshas.append({"name": "Nadi", "active": canc is None,
+                       "reason": canc or "both Moons in the same nadi"})
+    if ash["bhakut_dosha"]:
+        same = la == lb
+        doshas.append({"name": "Bhakoot", "active": not same,
+                       "reason": "Moon-sign lords are the same" if same
+                                 else "Moon signs 2/12, 5/9 or 6/8 apart"})
+
+    def mangal(md):
+        return {"manglik": md["present"],
+                "note": f"Mars in house {md['house_lagna']} from Lagna, "
+                        f"{md['house_moon']} from Moon"}
+
+    extra = []
+    for key, x in full.get("extra_milana", {}).items():
+        ok = x.get("ok", not (x.get("present") or x.get("same")))
+        extra.append({"name": _EXTRA_NAMES.get(key, key), "ok": ok, "verdict": x["verdict"]})
+    return {"total": ash["total"], "max": ash["max"],
+            "verdict": _VERDICT_EN.get(ash["verdict_class"], ash["verdict"]),
+            "verdict_class": ash["verdict_class"],
+            "kutas": [{"name": k["name"], "got": k["score"], "max": k["max"],
+                       "note": k["meaning"]} for k in ash["kutas"]],
+            "doshas": doshas, "extra": extra,
+            "mangal_a": mangal(full["mangal"]["a"]), "mangal_b": mangal(full["mangal"]["b"])}
 
 @st.cache_data(show_spinner=False)
 def make_pdf(params: dict, compat_json: str = "") -> bytes:
@@ -1739,7 +1791,7 @@ with tabs[10]:
                                     "default if the time is unknown.")
         b_city = (st.text_input("Partner birthplace (city)", key="cmp_city",
                                 placeholder="e.g. Mumbai, India") or "").strip()
-        who = st.radio("Who is male? (used for Varna/Vashya/Gana direction)",
+        who = st.radio("Who is male? (used for Varna, Stri-Dirgha and Rasi direction)",
                        ["Person A", "Person B", "Unknown"], horizontal=True, key="cmp_male")
 
         if st.button("💑 Check compatibility", type="primary", disabled=not b_city):
@@ -1755,28 +1807,24 @@ with tabs[10]:
                                       name=b_name or "Partner", gender=""))
                 bm = bchart["planets"]["Moon"]
                 st.session_state["cmp"] = {
-                    "a": {"nak": E.nak_index(ma["nakshatra"]), "rashi": ma["sign_idx"],
-                          "pada": ma.get("pada", 1), "nm": ma["nakshatra"], "sg": ma["sign"],
-                          "name": m.get("name") or "Person A",
-                          "mangal": E.mangal_dosha(chart["planets"], chart["lagna_idx"])},
-                    "b": {"nak": E.nak_index(bm["nakshatra"]), "rashi": bm["sign_idx"],
-                          "pada": bm.get("pada", 1), "nm": bm["nakshatra"], "sg": bm["sign"],
-                          "name": b_name or "Partner", "loc": g["label"],
-                          "mangal": E.mangal_dosha(bchart["planets"], bchart["lagna_idx"])},
-                    "who": who}
+                    "a": {"nm": ma["nakshatra"], "sg": ma["sign"],
+                          "name": m.get("name") or "Person A"},
+                    "b": {"nm": bm["nakshatra"], "sg": bm["sign"],
+                          "name": b_name or "Partner", "loc": g["label"]},
+                    "bchart": bchart, "who": who}
 
         cmp = st.session_state.get("cmp")
         if cmp:
             A, B, who = cmp["a"], cmp["b"], cmp["who"]
-            boy, girl = (B, A) if who == "Person B" else (A, B)
-            res = E.compute_compatibility(boy, girl)
+            full = E.compute_compatibility(chart, cmp["bchart"],
+                                           male="b" if who == "Person B" else "a")
+            res = _compat_view(full)
             st.divider()
             st.markdown(f"**{A['name']}** (Moon {A['sg']} · {A['nm']})  ⟷  "
                         f"**{B['name']}** (Moon {B['sg']} · {B['nm']}, {B['loc']})")
-            tot = res["total"]
-            verdict = ("Excellent" if tot >= 32 else "Good" if tot >= 25
-                       else "Acceptable" if tot >= 18 else "Below threshold")
-            vcol = ("var(--good)" if tot >= 25 else "var(--warn)" if tot >= 18 else "var(--bad)")
+            tot, verdict = res["total"], res["verdict"]
+            vcol = {"exc": "var(--good)", "good": "var(--good)",
+                    "ok": "var(--warn)"}.get(res["verdict_class"], "var(--bad)")
             k1, k2 = st.columns([1, 2])
             k1.metric("Guna Milan", f"{tot:g} / 36")
             k2.markdown(f"<div style='padding-top:8px'>Verdict: "
@@ -1784,8 +1832,8 @@ with tabs[10]:
                         f"<span style='color:#8a7a5c'>(≥18 is the usual minimum)</span></div>",
                         unsafe_allow_html=True)
             if who == "Unknown":
-                st.caption("Male/female not set — Person A taken as the boy for the directional "
-                           "kutas (Varna/Vashya/Gana). Pick above to refine.")
+                st.caption("Male/female not set — Person A taken as the groom for the directional "
+                           "factors (Varna, Stri-Dirgha, Rasi). Pick above to refine.")
             st.dataframe([{"Kuta": k["name"], "Score": f"{k['got']:g} / {k['max']}",
                            "Meaning": k["note"]} for k in res["kutas"]],
                          hide_index=True, use_container_width=True)
@@ -1802,8 +1850,14 @@ with tabs[10]:
             if not res["doshas"]:
                 st.success("No Nadi or Bhakoot dosha — the two critical factors are clear.")
 
+            # Extra milana factors beyond the 36 gunas
+            st.markdown("**Additional factors** (outside the 36 points)")
+            st.dataframe([{"Factor": x["name"], "Result": "✓" if x["ok"] else "⚠",
+                           "Assessment": x["verdict"]} for x in res["extra"]],
+                         hide_index=True, use_container_width=True)
+
             # Mangal / Kuja (Manglik) dosha
-            am, bm2 = A.get("mangal"), B.get("mangal")
+            am, bm2 = res["mangal_a"], res["mangal_b"]
             if am and bm2:
                 if am["manglik"] and bm2["manglik"]:
                     mang_txt, mang_fn = ("Both partners are **Manglik** — the dosha is "
@@ -1827,7 +1881,7 @@ with tabs[10]:
                 "a_name": A["name"], "a_moon": f"{A['sg']} · {A['nm']}",
                 "b_name": B["name"], "b_moon": f"{B['sg']} · {B['nm']}", "b_loc": B.get("loc", ""),
                 "total": tot, "max": res["max"], "verdict": verdict,
-                "kutas": res["kutas"], "doshas": res["doshas"],
+                "kutas": res["kutas"], "doshas": res["doshas"], "extra": res["extra"],
                 "mangal": {"a_name": A["name"], "a": am, "b_name": B["name"], "b": bm2}}
         else:
             st.session_state.pop("cmp_pdf", None)
