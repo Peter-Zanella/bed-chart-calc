@@ -1375,7 +1375,8 @@ style = st.radio("Chart style", ["South Indian", "North Indian"],
 
 tabs = st.tabs(["Planets & Houses", "Divisional charts", "Ashtakavarga",
                 "Varshaphala", "Vimshottari Dasha", "Jaimini", "Transits", "Panchang",
-                "Yogas", "Muhurta", "Compatibility", "Shad Bala"])
+                "Yogas", "Muhurta", "Compatibility", "Shad Bala",
+                "Medizin", "Fixsterne", "Upāyas", "Finsternisse"])
 
 # ── Tab 1 ─────────────────────────────────────────────────────────────────────
 with tabs[0]:
@@ -1954,6 +1955,74 @@ with tabs[11]:
             st.markdown(f"**Strongest house:** H{bo[0]} ({H[bo[0]]['sign']}, "
                         f"{H[bo[0]]['rupa']} rupas) · **Weakest house:** H{bo[-1]} "
                         f"({H[bo[-1]]['sign']}, {H[bo[-1]]['rupa']} rupas)")
+
+
+# ── Tabs 13–16: taken over from astro-report-service (German texts) ──────────
+# medical.py, fixstars.py and remedies.py render their own HTML; the service's
+# dark-theme variables are mapped onto this app's paper palette here.
+_SVC_CSS = """<style>
+.svc{--ac:#7b2d26;--mu:#7a6a4c;color:#2b2118;font-size:14px;line-height:1.6}
+.svc .sh{font-family:Georgia,'Times New Roman',serif;color:#7a6a4c;font-size:.78rem;
+  text-transform:uppercase;letter-spacing:.12em;margin:22px 0 12px}
+.svc .ow{overflow-x:auto}
+.svc .dt{width:100%;border-collapse:collapse;font-size:.82rem}
+.svc .dt th{background:#efe6d2;color:#7a6a4c;font-weight:600;text-transform:uppercase;
+  font-size:.7rem;letter-spacing:.06em;padding:8px 10px;text-align:left;border-bottom:1px solid #d9c9a8}
+.svc .dt td{padding:7px 10px;border-bottom:1px solid #e8dcc2;vertical-align:middle}
+</style>"""
+
+
+def _svc_tab(module_name: str):
+    try:
+        mod = __import__(module_name)
+        html = mod.render_tab(chart).replace("rgba(255,255,255,.14)", "rgba(0,0,0,.14)")
+    except Exception as e:
+        st.warning(f"This tab could not be computed ({e}).")
+        return
+    st.html(_SVC_CSS + f"<div class='svc'>{html}</div>")
+
+
+with tabs[12]:
+    _svc_tab("medical")
+
+with tabs[13]:
+    _svc_tab("fixstars")
+
+with tabs[14]:
+    _svc_tab("remedies")
+
+with tabs[15]:
+    try:
+        import eclipse_db
+        _ecl_ok = eclipse_db.available()
+    except Exception:
+        _ecl_ok = False
+    if not _ecl_ok:
+        st.warning("The eclipse database (eclipse_database.json) is missing.")
+    else:
+        em = eclipse_db.meta()
+        y0, y1 = eclipse_db.year_range()
+        st.subheader(f"Solar & lunar eclipses · {y0}–{y1}")
+        st.caption(f"Sidereal (Lahiri) positions of the eclipsed light — the Sun for solar, "
+                   f"the Moon for lunar eclipses. {em.get('count_solar', '?')} solar and "
+                   f"{em.get('count_lunar', '?')} lunar eclipses. Visibility for "
+                   f"{em.get('observer', '')}.")
+        years = sorted(eclipse_db.by_year())
+        this_year = datetime.now().year
+        ey = st.selectbox("Year", ["All"] + years,
+                          index=(years.index(this_year) + 1) if this_year in years else 0,
+                          key="ecl_year")
+        rows = eclipse_db.by_year(*((ey, ey) if ey != "All" else (None, None)))
+        vis = {True: "visible", False: "not visible"}
+        st.dataframe([{"Date": f"{e['day']:02d}.{e['month']:02d}.{e['year']}",
+                       "Time (UT)": e.get("time_ut", ""),
+                       "Kind": "☀ Solar" if e["kind"] == "solar" else "☾ Lunar",
+                       "Type": e.get("type", ""), "Sign": e.get("sign", ""),
+                       "Degree": e.get("deg_str", ""),
+                       "Nakshatra": f"{e.get('nakshatra', '')} P{e.get('pada', '')}",
+                       "Visible (CH)": vis.get(e.get("visible_wadenswil"), "—")}
+                      for y in sorted(rows) for e in rows[y]],
+                     hide_index=True, use_container_width=True, height=560)
 
 
 st.divider()
