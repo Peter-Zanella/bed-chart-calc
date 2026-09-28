@@ -6,7 +6,7 @@ This is the calculation core extracted from the original command-line script.
 All astronomy / astrology math is unchanged. The terminal (ANSI) rendering and
 interactive input have been removed so the same logic can drive a web UI.
 
-Accuracy tiers — tried automatically in order:
+Accuracy tiers - tried automatically in order:
   1. pyswisseph   Swiss Ephemeris DE431, < 0.001°   pip install pyswisseph
   2. JPL Horizons Same DE431 via REST API, < 0.001° internet required
   3. Built-in     Meeus + JPL Keplerian,  ~0.5°     always available
@@ -30,7 +30,7 @@ try:
 except ImportError:
     _SWE = False
 
-# ── zoneinfo — historically correct DST (Python 3.9+) ────────────────────────
+# ── zoneinfo - historically correct DST (Python 3.9+) ────────────────────────
 try:
     from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
     _ZONEINFO = True
@@ -73,6 +73,39 @@ NAK_ABR = [
     "Asw","Bha","Kri","Roh","Mri","Ard","Pun","Pus","Ash",
     "Mag","PPh","UPh","Has","Chi","Swa","Vis","Anu","Jye",
     "Mul","PAs","UAs","Shr","Dha","Sha","PBh","UBh","Rev",
+]
+
+# Namakṣara — the name-syllable of each of the 108 padas (Swara Siddhānta).
+# 27 nakshatras × 4 padas, in nakshatra order. Used for the traditional first
+# syllable of the given name. Interpretation aid only — never affects calculation.
+NAMAKSHARA = [
+    ["Chu","Che","Cho","La"],        # Ashwini
+    ["Li","Lu","Le","Lo"],           # Bharani
+    ["A","I","U","E"],               # Krittika
+    ["O","Va","Vi","Vu"],            # Rohini
+    ["Ve","Vo","Ka","Ki"],           # Mrigashira
+    ["Ku","Gha","Ng","Chha"],        # Ardra
+    ["Ke","Ko","Ha","Hi"],           # Punarvasu
+    ["Hu","He","Ho","Da"],           # Pushya
+    ["Di","Du","De","Do"],           # Ashlesha
+    ["Ma","Mi","Mu","Me"],           # Magha
+    ["Mo","Ta","Ti","Tu"],           # Purva Phalguni
+    ["Te","To","Pa","Pi"],           # Uttara Phalguni
+    ["Pu","Sha","Na","Tha"],         # Hasta
+    ["Pe","Po","Ra","Ri"],           # Chitra
+    ["Ru","Re","Ro","Ta"],           # Swati
+    ["Ti","Tu","Te","To"],           # Vishakha
+    ["Na","Ni","Nu","Ne"],           # Anuradha
+    ["No","Ya","Yi","Yu"],           # Jyeshtha
+    ["Ye","Yo","Bha","Bhi"],         # Mula
+    ["Bhu","Dha","Pha","Dha"],       # Purva Ashadha
+    ["Bhe","Bho","Ja","Ji"],         # Uttara Ashadha
+    ["Ju","Je","Jo","Gha"],          # Shravana
+    ["Ga","Gi","Gu","Ge"],           # Dhanishtha
+    ["Go","Sa","Si","Su"],           # Shatabhisha
+    ["Se","So","Da","Di"],           # Purva Bhadrapada
+    ["Du","Tha","Jha","Tra"],        # Uttara Bhadrapada
+    ["De","Do","Cha","Chi"],         # Revati
 ]
 
 DASHA_ORDER = ["Ketu","Venus","Sun","Moon","Mars","Rahu","Jupiter","Saturn","Mercury"]
@@ -163,7 +196,7 @@ def _jd_to_dt_str(jd:float) -> str:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TIER 1 — Swiss Ephemeris (pyswisseph)
+# TIER 1 - Swiss Ephemeris (pyswisseph)
 # ══════════════════════════════════════════════════════════════════════════════
 
 _SWE_ID = {"Sun":0,"Moon":1,"Mercury":2,"Venus":3,"Mars":4,"Jupiter":5,"Saturn":6,"Rahu":10}
@@ -178,11 +211,11 @@ def _swe_asc(jd:float, lat:float, lon:float) -> float:
     return norm(swe.houses_ex(jd, lat, lon, b"W", swe.FLG_SIDEREAL)[1][0])
 
 def _swe_ayan(jd:float) -> float:
-    return swe.get_ayanamsa_ut(jd)
+    return swe.get_ayanamsa_ex_ut(jd, swe.SIDM_LAHIRI)[0]
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TIER 2 — JPL Horizons REST API  (free, no key, same DE431 as Swiss Ephemeris)
+# TIER 2 - JPL Horizons REST API  (free, no key, same DE431 as Swiss Ephemeris)
 # ══════════════════════════════════════════════════════════════════════════════
 
 _HRZ  = "https://ssd.jpl.nasa.gov/api/horizons.api"
@@ -220,7 +253,7 @@ def _hrz_online() -> bool:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TIER 3 — Pure-Python fallback (Meeus Sun/Moon, JPL Keplerian planets)
+# TIER 3 - Pure-Python fallback (Meeus Sun/Moon, JPL Keplerian planets)
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _ayanamsha(jd:float) -> float:
@@ -310,7 +343,7 @@ def _ascendant(jd:float, lat:float, lon:float) -> float:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# ENGINE — selects best available tier automatically
+# ENGINE - selects best available tier automatically
 # ══════════════════════════════════════════════════════════════════════════════
 
 _hrz_checked: Optional[bool] = None
@@ -320,10 +353,11 @@ def compute_positions(jd:float, lat:float, lon:float) -> Tuple[Dict[str,float],f
     global _hrz_checked
 
     if _SWE:
+        swe.set_sid_mode(swe.SIDM_LAHIRI, 0, 0)   # always re-set — guards against state loss
         ayan = _swe_ayan(jd)
         lons = {p: _swe_planet(p,jd) for p in ("Sun","Moon","Mercury","Venus","Mars","Jupiter","Saturn","Rahu")}
         lons["Ketu"] = norm(lons["Rahu"]+180); lons["Ascendant"] = _swe_asc(jd,lat,lon)
-        return lons, ayan, "Swiss Ephemeris (pyswisseph)  —  DE431, < 0.001°"
+        return lons, ayan, "Swiss Ephemeris (pyswisseph)  -  DE431, < 0.001°"
 
     if _hrz_checked is None:
         _hrz_checked = _hrz_online()
@@ -337,7 +371,10 @@ def compute_positions(jd:float, lat:float, lon:float) -> Tuple[Dict[str,float],f
         if ok:
             lons["Rahu"] = norm(_rahu(jd)-ayan); lons["Ketu"] = norm(lons["Rahu"]+180)
             lons["Ascendant"] = norm(_ascendant(jd,lat,lon)-ayan)
-            return lons, ayan, "JPL Horizons API  —  DE431, < 0.001°"
+            # Tropical longitudes are DE431-accurate, but the sidereal shift here
+            # uses the polynomial _ayanamsha() (not true Lahiri), so the net
+            # sidereal error is arc-minutes, not < 0.001°. Label honestly.
+            return lons, ayan, "JPL Horizons API  -  DE431 tropical, sidereal via approx. ayanāṃśa (~1–2′)"
         _hrz_checked = False
 
     ayan = _ayanamsha(jd); lons = {}
@@ -346,7 +383,7 @@ def compute_positions(jd:float, lat:float, lon:float) -> Tuple[Dict[str,float],f
         lons[p] = norm(t - ayan)
     lons["Ketu"] = norm(lons["Rahu"]+180)
     lons["Ascendant"] = norm(_ascendant(jd,lat,lon)-ayan)
-    return lons, ayan, "Built-in math (JPL Keplerian)  —  ~0.5° for planets"
+    return lons, ayan, "Built-in math (JPL Keplerian)  -  ~0.5° for planets"
 
 def get_jd(year:int, month:int, day:int, hour_ut:float) -> float:
     return swe.julday(year,month,day,hour_ut) if _SWE else julian_day(year,month,day,hour_ut)
@@ -363,25 +400,31 @@ def nakshatra_of(lon:float) -> Tuple[str,str,int]:
     span=360/27; idx=int(lon/span)%27; pada=int((lon%span)/(span/4))+1
     return NAKSHATRAS[idx][0], NAKSHATRAS[idx][1], pada
 
+def namakshara_of(lon:float) -> str:
+    """Return the traditional name-syllable (Namakṣara) for this longitude's pada."""
+    span=360/27; idx=int(lon/span)%27; pada=int((lon%span)/(span/4))
+    return NAMAKSHARA[idx][pada]
+
 def dignity_of(planet:str, si:int, deg:float) -> str:
     if planet in ("Rahu","Ketu"):
         if EXALT_SIGN.get(planet)==si: return "Exalted"
         if DEBIL_SIGN.get(planet)==si: return "Debilitated"
-        return "—"
+        return "-"
     if EXALT_SIGN.get(planet)==si:
         return "Exalted"+(" (exact)" if abs(deg-EXALT_DEG.get(planet,-1))<1 else "")
     if DEBIL_SIGN.get(planet)==si: return "Debilitated"
     mt=MOOLA.get(planet)
     if mt and si==mt[0] and mt[1]<=deg<=mt[2]: return "Moolatrikona"
     if si in OWN_SIGNS.get(planet,[]): return "Own Sign"
-    return "—"
+    return "-"
 
 def _planet_record(name:str, lon:float) -> Dict:
     """Build a complete planet data record from a sidereal longitude."""
     si,sn,di = sign_of(lon); nak,nl,pada = nakshatra_of(lon)
     return {"lon":round(lon,4),"sign_idx":si,"sign":sn,"sign_lord":SIGN_LORDS[sn],
             "pos":f"{int(di)}° {int((di%1)*60):02d}'","nakshatra":nak,"nak_lord":nl,
-            "pada":pada,"dignity":dignity_of(name,si,di) if name!="Ascendant" else "—"}
+            "pada":pada,"syllable":namakshara_of(lon),
+            "dignity":dignity_of(name,si,di) if name!="Ascendant" else "-"}
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -401,14 +444,402 @@ def dasamsha_sign(lon:float) -> int:
     sign=int(lon/30)%12; start=sign if sign%2==0 else (sign+8)%12
     return (start+int((lon%30)/3))%12
 
+def chaturthamsha_sign(lon:float) -> int:
+    # D4: each sign in 4 parts of 7°30'; parts fall in the sign itself and its
+    # 4th, 7th, 10th (the Kendras from that sign)
+    sign=int(lon/30)%12; part=int((lon%30)/7.5)
+    return (sign+part*3)%12
+
 def divisional_sign(lon:float, div:int) -> int:
     if div==9:  return navamsa_sign(lon)
     if div==3:  return drekkana_sign(lon)
     if div==10: return dasamsha_sign(lon)
+    if div==4:  return chaturthamsha_sign(lon)
     return int(lon/30)%12
 
 def compute_divisional(lons:Dict[str,float], div:int) -> Dict[str,int]:
     return {name: divisional_sign(lon, div) for name,lon in lons.items()}
+
+def compute_divisional_full(lons:Dict[str,float], div:int) -> Dict[str,Dict]:
+    """Divisional chart with per-planet dignity in the divisional sign,
+    plus vargottama flag (same sign in D1 and this varga). Single source of truth.
+    Also attaches chart-level metadata under the '_meta' key: lagna sign,
+    lagna_occupants (planets in the divisional lagna), and vipareeta_raja_yoga."""
+    out = {}
+    asc_si = None
+    for name, lon in lons.items():
+        d_si = divisional_sign(lon, div)
+        d1_si = int(lon/30) % 12
+        if name == "Ascendant":
+            asc_si = d_si
+            out[name] = {"sign_idx": d_si, "sign": SIGNS[d_si], "dignity": "-",
+                         "vargottama": (d_si == d1_si)}
+        else:
+            out[name] = {
+                "sign_idx":   d_si,
+                "sign":       SIGNS[d_si],
+                "dignity":    dignity_of(name, d_si, 15.0),
+                "vargottama": (d_si == d1_si),
+            }
+
+    # Chart-level metadata
+    if asc_si is not None:
+        DUSTHANA = {6, 8, 12}
+        # planets in the divisional lagna
+        lagna_occ = [p for p, rec in out.items()
+                     if p != "Ascendant" and rec["sign_idx"] == asc_si]
+        # house of each planet in this divisional chart
+        p_houses = {p: ((rec["sign_idx"] - asc_si) % 12 + 1)
+                    for p, rec in out.items() if p != "Ascendant"}
+        # Vipareeta Raja Yoga: dusthana lord placed in a dusthana
+        vry = []
+        for hd in DUSTHANA:
+            sign_of_house = (asc_si + hd - 1) % 12
+            lord = SIGN_LORDS.get(SIGNS[sign_of_house])
+            if lord and lord in p_houses and p_houses[lord] in DUSTHANA:
+                vry.append(f"{lord} (lord of H{hd}) in H{p_houses[lord]}")
+        # Parivartana (mutual sign exchange) within THIS varga. Classified by
+        # the exchanged houses: Raja (kendra/trikona ↔ kendra/trikona),
+        # Dainya (a dusthana is involved), else Kahala. An exchange involving
+        # a debilitated planet cancels its debilitation (Neecha Bhanga).
+        GOOD = {1, 4, 5, 7, 9, 10}
+        pariv = []
+        seven = [p for p in p_houses if p in OWN_SIGNS]
+        d_si  = {p: out[p]["sign_idx"] for p in seven}
+        for i, a in enumerate(seven):
+            for b in seven[i+1:]:
+                if d_si[a] in OWN_SIGNS.get(b, []) and d_si[b] in OWN_SIGNS.get(a, []):
+                    ha, hb = p_houses[a], p_houses[b]
+                    kind = ("Raja" if ha in GOOD and hb in GOOD else
+                            "Dainya" if ha in DUSTHANA or hb in DUSTHANA else
+                            "Kahala")
+                    txt = f"{a} \u21c4 {b} — exchange across H{ha}/H{hb} ({kind})"
+                    nb = [p for p in (a, b) if out[p]["dignity"] == "Debilitated"]
+                    if nb:
+                        txt += f"; cancels debilitation of {', '.join(nb)} (Neecha Bhanga)"
+                    pariv.append(txt)
+        out["_meta"] = {
+            "lagna": SIGNS[asc_si],
+            "lagna_occupants": lagna_occ,
+            "vipareeta_raja_yoga": vry,
+            "parivartana": pariv,
+        }
+    return out
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# LORDSHIPS & ASPECTS  (single source of truth for interpretation layer)
+# ══════════════════════════════════════════════════════════════════════════════
+
+_MALEFICS = {"Sun","Mars","Saturn","Rahu","Ketu"}
+_BENEFICS = {"Jupiter","Venus","Moon","Mercury"}
+
+# Which sign each planet rules (Parashara). sign_idx 0=Aries .. 11=Pisces
+_SIGN_RULER = [
+    ("Mars",0),("Venus",1),("Mercury",2),("Moon",3),("Sun",4),("Mercury",5),
+    ("Venus",6),("Mars",7),("Jupiter",8),("Saturn",9),("Saturn",10),("Jupiter",11),
+]
+
+# Special aspects (graha drishti) by planet — the houses counted from the planet
+_SPECIAL_ASPECTS = {
+    "Mars":[4,8], "Jupiter":[5,9], "Saturn":[3,10], "Rahu":[5,9], "Ketu":[5,9],
+}
+
+def compute_lordships(lagna_idx:int) -> Dict[str,List[int]]:
+    """Return {planet: [house_numbers_it_rules]} for the given lagna."""
+    lords: Dict[str,List[int]] = {}
+    for planet, sign_idx in _SIGN_RULER:
+        house = (sign_idx - lagna_idx) % 12 + 1
+        lords.setdefault(planet, []).append(house)
+    return lords
+
+def compute_aspects(planets:Dict, lagna_idx:int) -> Dict:
+    """Graha Drishti with benefic/malefic tagging, lordship context, own-sign
+    strengthening, and house-level net summaries. Single source of truth."""
+    aspects: Dict = {}
+    planet_houses = {p: d.get("house", 0) for p,d in planets.items() if p!="Ascendant"}
+    lordships = compute_lordships(lagna_idx)
+
+    house_benefic = {h: [] for h in range(1, 13)}
+    house_malefic = {h: [] for h in range(1, 13)}
+
+    for p1, h1 in planet_houses.items():
+        if h1 == 0: continue
+        house_to_aspnum = {}
+        h7 = ((h1 + 6 - 1) % 12) + 1
+        house_to_aspnum[h7] = 7
+        for offset in _SPECIAL_ASPECTS.get(p1, []):
+            hx = ((h1 + offset - 2) % 12) + 1
+            house_to_aspnum[hx] = offset
+
+        p1_lords = lordships.get(p1, [])
+        is_malefic = p1 in _MALEFICS
+        lord_ctx = f" carrying H{'+H'.join(str(h) for h in sorted(p1_lords))}-energy" if p1_lords else ""
+
+        for p2, h2 in planet_houses.items():
+            if p2 == p1 or h2 == 0: continue
+            if h2 in house_to_aspnum:
+                asp_num = house_to_aspnum[h2]
+                owns_target = h2 in p1_lords
+                own_note = " [own-lord → strengthens despite malefic nature]" if owns_target and is_malefic else ""
+                mal_note = " [MALEFIC → afflicts but energises]" if is_malefic and not owns_target else ""
+                entry = aspects.get(p1, [])
+                entry.append(f"{asp_num}th on {p2} (H{h1}→H{h2}){lord_ctx}{own_note}{mal_note}")
+                aspects[p1] = entry
+                recv = aspects.get(p2, [])
+                recv.append(f"receives {asp_num}th from {p1}{lord_ctx}{own_note}{mal_note}")
+                aspects[p2] = recv
+
+        for asp_h, asp_num in house_to_aspnum.items():
+            owns_target = asp_h in p1_lords
+            lord_ctx_h = f"{p1}({asp_num}th,lord-H{'+H'.join(str(h) for h in sorted(p1_lords))})" if p1_lords else f"{p1}({asp_num}th)"
+            own_note_h = "[own-lord]" if owns_target and is_malefic else ""
+            mal_note_h = "[MALEFIC]" if is_malefic and not owns_target else ""
+            entry_h = f"{lord_ctx_h}{own_note_h}{mal_note_h}"
+            if is_malefic and not owns_target:
+                house_malefic[asp_h].append(entry_h)
+            else:
+                house_benefic[asp_h].append(entry_h)
+
+    aspects["_house_aspects"] = {}
+    for h in range(1, 13):
+        ben = house_benefic[h]; mal = house_malefic[h]
+        if not ben and not mal: continue
+        net = ("strengthened" if ben and not mal
+               else "afflicted" if mal and not ben else "mixed")
+        aspects["_house_aspects"][h] = {"benefic_aspects": ben,
+                                        "malefic_aspects": mal, "net": net}
+    return aspects
+
+
+# Combustion (Asta) orb: einheitlich 8° ekliptikaler Abstand zur Sonne.
+# Bewusste Praxis-Entscheidung (statt der grossen Suryasiddhanta-Orben wie
+# Mars 17°): 8° entspricht der Beratungspraxis und der KAP-Systematik im
+# Medizin-Tab; die klassischen Orben blendeten z.B. einen Mars 9° neben der
+# Sonne bereits als "verbrannt" ein.
+_COMBUST_ORB = {"Moon": 8.0, "Mars": 8.0, "Mercury": 8.0,
+                "Jupiter": 8.0, "Venus": 8.0, "Saturn": 8.0}
+
+def compute_conjunctions(planets: Dict, max_orb: float = 10.0) -> Dict[str, List[Dict]]:
+    """Konjunktionen aller Grahas untereinander (ekliptikaler Abstand ≤ max_orb),
+    je Planet aufsteigend nach Orbis sortiert. Chart-Produkt der Engine —
+    die Deutungsschicht (ai_report) misst selbst keine Abstände mehr, sondern
+    liest hier ab (z.B. Lagneśa-Konjunktionen, Rahu/Ketu-Signatur der
+    Hausherren)."""
+    names = [p for p in planets if p != "Ascendant"]
+    out: Dict[str, List[Dict]] = {p: [] for p in names}
+    for i, a in enumerate(names):
+        la = planets[a].get("lon")
+        if la is None:
+            continue
+        for b in names[i + 1:]:
+            lb = planets[b].get("lon")
+            if lb is None:
+                continue
+            d = abs((la - lb + 180) % 360 - 180)
+            if d <= max_orb:
+                out[a].append({"with": b, "orb": round(d, 2)})
+                out[b].append({"with": a, "orb": round(d, 2)})
+    for p in out:
+        out[p].sort(key=lambda e: e["orb"])
+    return out
+
+
+def _retro_flags(jd: float) -> Dict[str, bool]:
+    """Rückläufigkeit der fünf Tara-Grahas zum Zeitpunkt jd (nur mit SWE;
+    Geschwindigkeit in Länge < 0). Sonne/Mond sind nie retrograd; mittlere
+    Knoten laufen definitionsgemäss rückwärts und werden nicht geflaggt.
+    Nur als Flag, NICHT im pos-String — _deg_in_sign_val parst pos numerisch."""
+    out: Dict[str, bool] = {}
+    if not _SWE:
+        return out
+    for pname in ("Mercury", "Venus", "Mars", "Jupiter", "Saturn"):
+        try:
+            swe.set_sid_mode(swe.SIDM_LAHIRI, 0, 0)
+            xx, _rf = swe.calc_ut(jd, _SWE_ID[pname],
+                                  swe.FLG_SIDEREAL | swe.FLG_SPEED)
+            out[pname] = xx[3] < 0
+        except Exception:
+            pass
+    return out
+
+
+#: Temporäre (Tatkālika) Freundschaft: Zeichenabstände, die als freundlich
+#: gelten — die klassische Menge. Das 1., also zwei Planeten im SELBEN
+#: Zeichen, gehört bewusst NICHT dazu: Die Konjunktion zählt klassisch zu den
+#: temporären Feindschaften, weshalb etwa Mars bei der Sonne im Löwen als
+#: neutral geführt wird (natürlicher Freund + temporärer Feind = Sama),
+#: obwohl der Zeichenherr sein natürlicher Freund ist. Das ist gewollt; die
+#: Herleitung wird der Deutung über 'dignity_parts' mitgegeben, damit das
+#: Ergebnis nicht als Eigenschaft des Zeichens missverstanden wird.
+#: Die Relation ist gegenseitig — steht A im n-ten Zeichen von B, so B im
+#: entsprechenden von A, und beide Seiten fallen gleich aus.
+_TATKALIKA_FRIEND = (2, 3, 4, 10, 11, 12)
+
+#: Zusammensetzung der Würde aus natürlicher und temporärer Freundschaft —
+#: die klassische Pañcadhā Maitrī, beide Ebenen gleich gewichtet, nach
+#: Parashara. Keine Sonderregeln: weder eine schwächere Gewichtung der
+#: temporären Ebene noch eine Sonderbehandlung der Konjunktion.
+_COMPOUND_DIGNITY = {
+    ("friend", "friend"):  "Great Friend's Sign",
+    ("friend", "enemy"):   "Neutral Sign",
+    ("neutral", "friend"): "Friend's Sign",
+    ("neutral", "enemy"):  "Enemy's Sign",
+    ("enemy", "friend"):   "Neutral Sign",
+    ("enemy", "enemy"):    "Great Enemy's Sign",
+}
+
+
+def _apply_compound_dignity(planets: Dict) -> None:
+    """Pañcadhā Maitrī: füllt für So–Sa die Würde in Freund-/Feindzeichen
+    (zusammengesetzt aus natürlicher UND temporärer Freundschaft zum
+    Zeichenherrn — Konvention wie Kala/Parashara's Light). Exaltation,
+    Moolatrikona, eigenes Zeichen und Debilitation bleiben unberührt;
+    vorher stand hier schlicht "-" und die Deutung erfand die
+    Zeichen-Zuträglichkeit selbst.
+    """
+    # _NAT_FRIEND (weiter unten definiert): planet -> (friends, enemies);
+    # zur Aufrufzeit verfügbar — dieselbe Tabelle wie für die Graha-Maitrī-Kūṭa.
+    seven = [p for p in _NAT_FRIEND if p in planets]
+    si = {p: planets[p].get("sign_idx") for p in seven}
+    for p in seven:
+        if planets[p].get("dignity", "-") != "-" or si.get(p) is None:
+            continue
+        lord = SIGN_LORDS.get(SIGNS[si[p]])
+        if not lord or lord == p or lord not in si or si.get(lord) is None:
+            continue
+        _friends, _enemies = _NAT_FRIEND.get(p, (set(), set()))
+        nat = ("friend" if lord in _friends else
+               "enemy" if lord in _enemies else "neutral")
+        rel_house = (si[lord] - si[p]) % 12 + 1
+        temp = "friend" if rel_house in _TATKALIKA_FRIEND else "enemy"
+        planets[p]["dignity"] = _COMPOUND_DIGNITY[(nat, temp)]
+        # Herleitung mitliefern. Ohne sie las sich ein zusammengesetztes
+        # "Neutral Sign" so, als sei das Zeichen selbst neutral — bei Mars im
+        # Löwen etwa ist der Zeichenherr ein natürlicher FREUND, und erst die
+        # temporäre Entfremdung macht das Ergebnis neutral.
+        planets[p]["dignity_parts"] = {
+            "sign_lord": lord,
+            "natural": nat,               # friend | neutral | enemy
+            "temporal": temp,             # friend | enemy
+            "lord_house_from_planet": rel_house,
+        }
+
+
+_GANDANTA_ZONE = {
+    "Cancer": (26.67, 30), "Scorpio": (26.67, 30), "Pisces": (26.67, 30),
+    "Aries":  (0, 3.33),   "Leo":     (0, 3.33),   "Sagittarius": (0, 3.33),
+}
+
+def _deg_in_sign_val(pos_str) -> float:
+    try:
+        parts = str(pos_str).replace("'","").split("°")
+        deg = float(parts[0].strip())
+        mins = float(parts[1].strip()) if len(parts) > 1 and parts[1].strip() else 0
+        return deg + mins/60
+    except Exception:
+        return 0.0
+
+def compute_afflictions(planets:Dict) -> Dict:
+    """Detect the classical affliction types from computed planet data.
+    Single source of truth (combustion, debilitation, retrograde, gandanta,
+    papakartari, graha yuddha)."""
+    aff: Dict = {}
+    sun_sign = planets.get("Sun", {}).get("sign", "")
+    sun_deg  = _deg_in_sign_val(planets.get("Sun", {}).get("pos", "0"))
+    p_deg   = {p: _deg_in_sign_val(d.get("pos","0")) for p,d in planets.items() if p!="Ascendant"}
+    p_house = {p: d.get("house", 0) for p,d in planets.items() if p!="Ascendant"}
+
+    for pname, pdata in planets.items():
+        if pname in ("Ascendant","Sun"): continue
+        issues = []
+        orb = _COMBUST_ORB.get(pname)
+        sun_lon = planets.get("Sun", {}).get("lon")
+        if orb and sun_lon is not None and pdata.get("lon") is not None:
+            d_sun = abs((pdata["lon"] - sun_lon + 180) % 360 - 180)
+            if d_sun < orb:
+                issues.append(f"combust/Asta ({d_sun:.1f}° from Sun, orb {orb:g}°)")
+        elif orb and pdata.get("sign") == sun_sign:   # fallback without lon
+            diff = abs(p_deg.get(pname, 0) - sun_deg)
+            if diff < orb:
+                issues.append(f"combust/Asta ({diff:.1f}° from Sun, orb {orb:g}°)")
+        if "Debil" in pdata.get("dignity",""):
+            issues.append("debilitated — check for Neecha Bhanga")
+        if pdata.get("retrograde") or "R" in str(pdata.get("pos","")):
+            issues.append("retrograde")
+        sign = pdata.get("sign",""); deg = p_deg.get(pname, 0)
+        gand = False
+        if sign in _GANDANTA_ZONE:
+            lo, hi = _GANDANTA_ZONE[sign]
+            if lo <= deg <= hi:
+                gand = True
+                issues.append(f"Gandanta ({deg:.1f}° in {sign})")
+        if not gand and (deg < 1.0 or deg > 29.0):
+            edge = deg if deg < 1.0 else 30.0 - deg
+            issues.append(f"Rashi Sandhi ({deg:.1f}° in {sign}, {edge:.1f}° from sign edge)")
+        if issues:
+            aff[pname] = issues
+
+    # Papakartari: planet hemmed between malefics in adjacent houses
+    for pname in planets:
+        if pname == "Ascendant": continue
+        h = p_house.get(pname, 0)
+        if h == 0: continue
+        prev_h, next_h = ((h-2) % 12) + 1, (h % 12) + 1
+        prev_mal = [p for p,ph in p_house.items() if ph == prev_h and p in _MALEFICS]
+        next_mal = [p for p,ph in p_house.items() if ph == next_h and p in _MALEFICS]
+        if prev_mal and next_mal:
+            aff.setdefault(pname, []).append(
+                f"Papakartari (between {prev_mal[0]} H{prev_h} and {next_mal[0]} H{next_h})")
+
+    # Graha Yuddha: two non-luminary/non-node planets within 1° in same sign
+    war = [p for p in planets if p not in ("Sun","Moon","Rahu","Ketu","Ascendant")]
+    for i, p1 in enumerate(war):
+        for p2 in war[i+1:]:
+            l1, l2 = planets[p1].get("lon"), planets[p2].get("lon")
+            if l1 is not None and l2 is not None:
+                diff = abs((l1 - l2 + 180) % 360 - 180)
+                if diff < 1.0:
+                    aff.setdefault(p1, []).append(f"Graha Yuddha with {p2} ({diff:.2f}°)")
+                    aff.setdefault(p2, []).append(f"Graha Yuddha with {p1} ({diff:.2f}°)")
+
+    # Nodal affliction (Grahaṇa-Yuti): a graha tightly conjunct Rahu or Ketu is
+    # "grasped" by the node. Classically central in Prāśna (an afflicted Lagneśa
+    # conjunct Ketu shows severance/negation/hidden factors) as well as in Janma
+    # charts. Includes Sun and Moon (eclipse axis). Orb 8°, <3° flagged as tight.
+    for node in ("Rahu", "Ketu"):
+        n_lon = planets.get(node, {}).get("lon")
+        if n_lon is None:
+            continue
+        for pname, pdata in planets.items():
+            if pname in ("Ascendant", "Rahu", "Ketu"):
+                continue
+            l = pdata.get("lon")
+            if l is None:
+                continue
+            d = abs((l - n_lon + 180) % 360 - 180)
+            if d < 8.0:
+                tight = ", very tight" if d < 3.0 else ""
+                aff.setdefault(pname, []).append(
+                    f"conjunct {node} ({d:.1f}°{tight}) — nodal affliction/Grahana")
+
+    # Lagna in Gandanta / Rashi Sandhi (classically significant for the chart)
+    asc = planets.get("Ascendant")
+    if asc:
+        a_sign = asc.get("sign",""); a_deg = _deg_in_sign_val(asc.get("pos","0"))
+        a_iss = []
+        a_gand = False
+        if a_sign in _GANDANTA_ZONE:
+            lo, hi = _GANDANTA_ZONE[a_sign]
+            if lo <= a_deg <= hi:
+                a_gand = True
+                a_iss.append(f"Gandanta ({a_deg:.1f}° in {a_sign})")
+        if not a_gand and (a_deg < 1.0 or a_deg > 29.0):
+            edge = a_deg if a_deg < 1.0 else 30.0 - a_deg
+            a_iss.append(f"Rashi Sandhi ({a_deg:.1f}° in {a_sign}, {edge:.1f}° from sign edge)")
+        if a_iss:
+            aff["Ascendant"] = a_iss
+    return aff
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -442,7 +873,19 @@ def build_dashas(moon_sid:float, birth_dt:datetime) -> Dict:
     cur_maha=cur_antar=cur_pad=None
     mahas=[]; maha_curr=birth_dt
 
-    for i in range(9):
+    # Viṃśottarī ist zyklisch: Nach 120 Jahren beginnt dieselbe Folge erneut.
+    # Ein einziger Zyklus reichte nur für Geburten der letzten 120 Jahre —
+    # bei älteren Daten (z.B. 1848) endete die Zeitleiste vor heute, keine
+    # Periode war aktiv und 'current' blieb komplett leer. Es werden deshalb
+    # so viele Zyklen erzeugt, wie nötig sind, um den heutigen Tag zu
+    # überdecken (Deckel bei 5 Zyklen = 600 Jahre gegen Endlosschleifen).
+    _first_full=DASHA_YEARS[lord]
+    cycles=1
+    while cycles<5 and birth_dt+timedelta(
+            days=(cycles*DASHA_TOTAL-frac_done*_first_full)*365.25)<=today:
+        cycles+=1
+
+    for i in range(9*cycles):
         maha=DASHA_ORDER[(start_idx+i)%9]; full_yrs=DASHA_YEARS[maha]
         maha_yrs=full_yrs*(1-frac_done if i==0 else 1.0)
         maha_end=maha_curr+timedelta(days=maha_yrs*365.25)
@@ -489,6 +932,17 @@ def build_dashas(moon_sid:float, birth_dt:datetime) -> Dict:
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _sun_sid(jd:float) -> float:
+    """Sidereal (Lahiri) Sun for the solar-return search.
+
+    MUST use the same tier as the natal chart: the natal Sun longitude comes
+    from Swiss Ephemeris, so the zero-crossing has to be solved against the
+    SWE Sun as well. Mixing SWE (natal) with Meeus+polynomial ayanamsha (here)
+    shifted the return moment by minutes — enough to move the Varshaphala
+    Lagna by several degrees. Meeus remains the Tier-3 fallback only.
+    """
+    if _SWE:
+        swe.set_sid_mode(swe.SIDM_LAHIRI, 0, 0)   # always re-set before calc
+        return _swe_planet("Sun", jd)
     return norm(_sun(jd) - _ayanamsha(jd))
 
 def find_solar_return_jd(natal_sun_sid:float, birth_month:int,
@@ -514,6 +968,9 @@ def compute_varshaphala(birth_year:int, birth_month:int, birth_day:int,
     lons_sr, _, _ = compute_positions(jd_sr, lat, lon)
 
     planets_sr = {name: _planet_record(name, lon) for name,lon in lons_sr.items()}
+    for _rp, _rv in _retro_flags(jd_sr).items():
+        if _rp in planets_sr:
+            planets_sr[_rp]["retrograde"] = _rv
 
     asc_si    = planets_sr["Ascendant"]["sign_idx"]
     asc_sn    = SIGNS[asc_si]
@@ -526,7 +983,9 @@ def compute_varshaphala(birth_year:int, birth_month:int, birth_day:int,
     hl_start = _HORA_ORDER.index(_WEEKDAY_LORDS[int(jd_sr+1.5)%7])
     hr_lord  = _HORA_ORDER[(hl_start + int((jd_sr+0.5)%1*24)) % 7]
     candidates = [wd_lord, hr_lord, lagna_lord]
-    varsha_pati = max(set(candidates), key=candidates.count)
+    # max over the list, not a set: on a tie the first candidate wins every run,
+    # instead of whichever the hash seed puts first.
+    varsha_pati = max(candidates, key=candidates.count)
 
     return {
         "year_number":   age,
@@ -550,11 +1009,11 @@ def compute_varshaphala(birth_year:int, birth_month:int, birth_day:int,
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# JAIMINI  (Chara Karakas — 8-karaka scheme including Rahu)
+# JAIMINI  (Chara Karakas - 8-karaka scheme including Rahu)
 #
 # Each graha is ranked by the degrees it has traversed within its sign (0–30°),
 # highest first. Rahu is reckoned in REVERSE (30° − deg) because it moves
-# retrograde — this is what "taking Rahu into account" means and is the
+# retrograde - this is what "taking Rahu into account" means and is the
 # difference between the 7-karaka (no Rahu) and 8-karaka schemes.
 #   1 Atmakaraka (AK)   soul / self          highest degree
 #   2 Amatyakaraka(AmK) career / advisor
@@ -612,14 +1071,36 @@ def compute_jaimini(lons: Dict[str, float], lagna_si: int) -> Dict:
     lord_si = sign_of(lons[lagna_lord])[0]
     al_si = _arudha(lagna_si, lord_si)
 
-    # Upapada Lagna (UL) — arudha pada of the 12th house
+    # Upapada Lagna (UL) - arudha pada of the 12th house
     twelfth_si = (lagna_si - 1) % 12
     twelfth_lord = SIGN_LORDS[SIGNS[twelfth_si]]
     ul_si = _arudha(twelfth_si, sign_of(lons[twelfth_lord])[0])
 
+    # ── Alle zwölf Bhāva-Arudhas (A1…A12) ────────────────────────────────────
+    # Für jedes Haus: vom Haus zu seinem Herrn zählen, dieselbe Zahl vom Herrn
+    # weiter; fällt das Ergebnis auf das Haus selbst oder das 7. davon, wird
+    # das 10. davon genommen (_arudha). A1 ist das Arudha Lagna, A12 das
+    # Upapada — beide werden unten unverändert einzeln weitergegeben.
+    _ARUDHA_LABELS = {1: "AL", 12: "UL"}
+    arudha_padas = {}
+    for _h in range(1, 13):
+        _h_si = (lagna_si + _h - 1) % 12
+        _h_lord = SIGN_LORDS[SIGNS[_h_si]]
+        _a_si = _arudha(_h_si, sign_of(lons[_h_lord])[0])
+        arudha_padas[_h] = {
+            "label": _ARUDHA_LABELS.get(_h, f"A{_h}"),
+            "house": _h,
+            "sign_idx": _a_si,
+            "sign": SIGNS[_a_si],
+            "lord": SIGN_LORDS[SIGNS[_a_si]],
+            "from_house_lord": _h_lord,
+            "house_from_lagna": (_a_si - lagna_si) % 12 + 1,
+        }
+
     return {
         "order": CHARA_KARAKAS_8,
         "karakas": karakas,
+        "arudha_padas": arudha_padas,
         "karaka_of": karaka_of,
         "atmakaraka": ak,
         "darakaraka": dk,
@@ -637,7 +1118,7 @@ def compute_jaimini(lons: Dict[str, float], lagna_si: int) -> Dict:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# CHARA DASHA  (Jaimini sign-based dasha — K.N. Rao method)
+# CHARA DASHA  (Jaimini sign-based dasha - K.N. Rao method)
 #
 #  • Start at the Lagna sign at birth.
 #  • Sequence direction: forward (zodiacal) if Lagna is an ODD sign
@@ -645,15 +1126,29 @@ def compute_jaimini(lons: Dict[str, float], lagna_si: int) -> Dict:
 #  • Duration of a sign = (count from the sign to its lord) − 1 year, where the
 #    count direction is forward for odd signs and backward for even signs; a
 #    count of 1 (lord in the sign) gives 12 years.
-#  • Dual-ruled signs: Scorpio (Mars/Ketu), Aquarius (Saturn/Rahu) — the longer
+#  • Dual-ruled signs: Scorpio (Mars/Ketu), Aquarius (Saturn/Rahu) - the longer
 #    of the two co-lord periods is used (a common convention; schools vary).
 #  • Antardashas: each = mahadasha/12, starting from the mahadasha sign and
 #    moving in that sign's own direction (its odd/even nature).
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _chara_odd(si: int) -> bool:
-    """Odd sign? Aries, Gemini, Leo, Libra, Sagittarius, Aquarius (0-based even index)."""
-    return si % 2 == 0
+#: Ungeradefüssige (viṣama-pada) Zeichen — Grundlage der Jaimini-Konvention.
+_ODD_FOOTED = {0, 1, 2, 6, 7, 8}   # Widder, Stier, Zwillinge, Waage, Skorpion, Schütze
+
+def _chara_odd(si: int, pada: bool = False) -> bool:
+    """Zählt die Chara Daśā von diesem Zeichen aus DIREKT (zodiakal)?
+
+    Zwei etablierte Schulen, die sich in genau den vier FIXEN Zeichen
+    unterscheiden (Stier, Löwe, Skorpion, Wassermann):
+
+      pada=False — nach der ZEICHENNUMMER: ungerade Zeichen (Widder,
+        Zwillinge, Löwe, Waage, Schütze, Wassermann) direkt. Variante von
+        K.N. Rao.
+      pada=True  — nach der FÜSSIGKEIT: ungeradefüssige Zeichen (Widder,
+        Stier, Zwillinge, Waage, Skorpion, Schütze) direkt. Jaimini-Sūtra-
+        Tradition (Sanjay Rath); so rechnet auch Kala.
+    """
+    return (si in _ODD_FOOTED) if pada else (si % 2 == 0)
 
 def _chara_count(from_si: int, to_si: int, direct: bool) -> int:
     return ((to_si - from_si) % 12 + 1) if direct else ((from_si - to_si) % 12 + 1)
@@ -710,9 +1205,9 @@ def stronger_colord(sign_si: int, a: str, b: str,
     return (b, "tie → node")   # deterministic final fallback
 
 def _chara_years(sign_si: int, ps: Dict[str, int],
-                 lons: Dict[str, float]) -> Tuple[int, str, str]:
+                 lons: Dict[str, float], pada: bool = False) -> Tuple[int, str, str]:
     """Return (years, lord_used, reason). reason is '' for single-lord signs."""
-    direct = _chara_odd(sign_si)
+    direct = _chara_odd(sign_si, pada)
     sn = SIGNS[sign_si]
     if sn == "Scorpio":
         lord, reason = stronger_colord(sign_si, "Mars", "Ketu", ps, lons)
@@ -737,20 +1232,42 @@ def _chara_antardashas(maha_si: int, maha_years: float, start_dt: datetime,
     return out
 
 def build_chara_dasha(planet_signs: Dict[str, int], lons: Dict[str, float],
-                      lagna_si: int, birth_dt: datetime, span_years: float = 120.0) -> Dict:
-    direct = _chara_odd(lagna_si)
+                      lagna_si: int, birth_dt: datetime, span_years: float = 120.0,
+                      seq_pada: bool = False, dur_pada: bool = False) -> Dict:
+    """Chara Daśā. Zwei UNABHÄNGIGE Richtungsentscheidungen:
+
+      seq_pada — Richtung der Daśā-FOLGE, bestimmt aus dem Lagna-Zeichen.
+      dur_pada — Richtung der DAUER-Zählung, je Zeichen zu seinem Herrn.
+
+    Die Folge richtet sich klassisch nach dem **9. Zeichen vom Lagna**, nicht
+    nach dem Lagna selbst (Jaimini / K.N. Rao). Bei Skorpion-Lagna ist das
+    Krebs; Krebs gehört zur rückwärts laufenden Gruppe, also läuft die ganze
+    Sequenz rückwärts: Skorpion → Waage → Jungfrau → Löwe → Krebs → …
+    Diese 9.-Zeichen-Regel gilt AUSDRÜCKLICH NICHT für die Jahresdauern.
+
+    Hinweis zur Zeichennummer-Gruppierung: Das 9. Zeichen hat immer dieselbe
+    Parität wie das Lagna (+8 Positionen), dort ändert die Regel also nichts.
+    Wirksam wird sie erst mit der Pada-Gruppierung.
+    """
+    direct = _chara_odd((lagna_si + 8) % 12, seq_pada)
     order = [((lagna_si + i) % 12 if direct else (lagna_si - i) % 12) for i in range(12)]
 
     durations, colords = {}, {}
     for si in range(12):
-        yrs, lord, reason = _chara_years(si, planet_signs, lons)
+        yrs, lord, reason = _chara_years(si, planet_signs, lons, dur_pada)
         durations[si] = yrs
         if SIGNS[si] in ("Scorpio", "Aquarius"):
             colords[SIGNS[si]] = {"lord": lord, "reason": reason}
 
     today = datetime.now()
     mahas, cur, total, idx, current = [], birth_dt, 0.0, 0, None
-    while total < span_years:
+    # Chara Daśā ist zyklisch: Nach allen zwölf Zeichen beginnt die Folge
+    # erneut. span_years allein deckte nur Geburten der letzten 120 Jahre —
+    # bei älteren Daten (z.B. 1848) endete die Zeitleiste vor heute, keine
+    # Periode war aktiv und 'current' blieb None, wie zuvor bei Viṃśottarī.
+    # Erzeugt wird daher mindestens span_years und darüber hinaus so lange,
+    # bis der heutige Tag überdeckt ist (Deckel: 240 Perioden = 20 Zyklen).
+    while (total < span_years or cur <= today) and idx < 240:
         si = order[idx % 12]
         yrs = durations[si]
         end = cur + timedelta(days=yrs * 365.25)
@@ -763,6 +1280,8 @@ def build_chara_dasha(planet_signs: Dict[str, int], lons: Dict[str, float],
         cur = end; total += yrs; idx += 1
 
     return {"mahadashas": mahas, "current": current,
+            "convention": {"sequence": "pada" if seq_pada else "sign-number",
+                           "duration": "pada" if dur_pada else "sign-number"},
             "direction": "direct (zodiacal)" if direct else "reverse",
             "durations": {SIGNS[si]: durations[si] for si in range(12)},
             "colords": colords}
@@ -782,7 +1301,7 @@ def _http_get(url:str) -> Optional[dict]:
     except Exception: return None
 
 def _open_meteo_geo(name:str) -> Optional[Dict]:
-    """Open-Meteo geocoder — free, no key, returns coordinates AND an IANA timezone."""
+    """Open-Meteo geocoder - free, no key, returns coordinates AND an IANA timezone."""
     d = _http_get("https://geocoding-api.open-meteo.com/v1/search"
                   f"?name={urllib.parse.quote_plus(name)}&count=1&language=en&format=json")
     if not d or not d.get("results"):
@@ -826,7 +1345,13 @@ def geocode(query:str) -> Optional[Dict]:
 
 def iana_tz(lat:float, lon:float) -> Optional[str]:
     d = _http_get(f"https://timeapi.io/api/timezone/coordinate?latitude={lat:.6f}&longitude={lon:.6f}")
-    return d.get("timeZone") if d else None
+    if not d:
+        return None
+    if isinstance(d, list):
+        d = d[0] if d else None
+    if not isinstance(d, dict):
+        return None
+    return d.get("timeZone")
 
 def hist_offset(iana:str, year:int, month:int, day:int, hour:int, minute:int) -> Optional[float]:
     if not _ZONEINFO: return None
@@ -897,7 +1422,7 @@ def compute_panchang(sun_lon: float, moon_lon: float, weekday_idx: int,
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# YOGAS (combinations) — natal D1
+# YOGAS (combinations) - natal D1
 # ══════════════════════════════════════════════════════════════════════════════
 # Graha drishti (sign-offset a planet aspects; 0-indexed). All aspect the 7th (6);
 # Mars also 4th/8th, Jupiter 5th/9th, Saturn 3rd/10th.
@@ -922,6 +1447,167 @@ def graha_aspects_by_sign(planets: Dict) -> Dict[int, List[str]]:
         offs = _RAHU_ASPECT if p == "Rahu" else _ASPECT_OFF.get(p, {6})
         for o in offs:
             out[(si[p] + o) % 12].append(p)
+    return out
+
+
+# ── Äussere Planeten (Uranus/Neptun/Pluto) — reine Referenz ──────────────────
+# Nicht Teil der klassischen Jyotiṣa-Systematik: sie fliessen NICHT in Daśās,
+# Yogas, Aspekte, Affliktionen, Shad Bala oder Kompatibilität ein. Anzeige mit
+# siderischen (Lahiri-)Positionen im Planeten-Tab. Nur mit Swiss Ephemeris.
+_OUTER_IDS = {"Uranus": 7, "Neptune": 8, "Pluto": 9}
+OUTER_DE = {"Uranus": "Uranus", "Neptune": "Neptun", "Pluto": "Pluto"}
+
+
+def compute_outer_planets(jd: float) -> Dict[str, Dict]:
+    if not _SWE:
+        return {}
+    out: Dict[str, Dict] = {}
+    for name, pid in _OUTER_IDS.items():
+        try:
+            swe.set_sid_mode(swe.SIDM_LAHIRI, 0, 0)   # immer neu setzen
+            xx, _rf = swe.calc_ut(jd, pid, swe.FLG_SIDEREAL | swe.FLG_SPEED)
+            l = norm(xx[0])
+            si = int(l // 30) % 12
+            deg = l % 30
+            span = 360.0 / 27.0
+            ni = int(l / span) % 27
+            out[name] = {
+                "lon": round(l, 4), "sign": SIGNS[si], "sign_idx": si,
+                "pos": f"{int(deg)}\u00b0 {int((deg%1)*60):02d}'",
+                "nakshatra": NAKSHATRAS[ni][0], "nak_lord": NAKSHATRAS[ni][1],
+                "pada": int((l % span) / (span / 4)) + 1,
+                "d9_sign_idx": navamsa_sign(l), "d9_sign": SIGNS[navamsa_sign(l)],
+                "retrograde": xx[3] < 0,
+            }
+        except Exception:
+            continue
+    return out
+
+
+# ── Upagrahas (Schattenplaneten) ──────────────────────────────────────────────
+
+_WEEK_LORDS = ["Sun", "Moon", "Mars", "Mercury", "Jupiter", "Venus", "Saturn"]
+
+
+def _sun_rise_set(jd_ut: float, lat: float, lon: float, kind: int) -> Optional[float]:
+    """Nächster Sonnenauf-/-untergang NACH jd_ut (Hindu-Konvention:
+    Scheibenmitte, ohne Refraktion). Nur mit Swiss Ephemeris."""
+    if not _SWE:
+        return None
+    try:
+        flags = kind | getattr(swe, "BIT_HINDU_RISING",
+                               getattr(swe, "BIT_DISC_CENTER", 0) |
+                               getattr(swe, "BIT_NO_REFRACTION", 0))
+        res, tret = swe.rise_trans(jd_ut, swe.SUN, flags, [lon, lat, 0.0])
+        return tret[0] if res == 0 else None
+    except Exception:
+        return None
+
+
+def compute_upagrahas(jd: float, lat: float, lon: float,
+                      sun_sid: float) -> Dict[str, Dict]:
+    """Upagrahas mit siderischen Längen.
+
+    Sonnen-basiert (BPHS-Arithmetik auf der siderischen Sonnenlänge):
+      Dhūma = Sonne + 133°20' · Vyatīpāta = 360° − Dhūma ·
+      Pariveṣa = Vyatīpāta + 180° · Indrachāpa = 360° − Pariveṣa ·
+      Upaketu = Indrachāpa + 16°40'  (Kontrolle: Upaketu + 30° = Sonne).
+
+    Zeit-basiert (Achtelteilung des Tag-/Nachtbogens; das siderische Lagna
+    am BEGINN des jeweiligen Herrscherabschnitts; Māndi = MITTE des
+    Saturn-Abschnitts — Konvention wie Kala/Parashara's Light):
+      Gulika (Saturn, Beginn) · Māndi (Saturn, Mitte) · Kāla (Sonne) ·
+      Mṛtyu (Mars) · Ardhaprahara (Merkur) · Yamaghaṇṭaka (Jupiter).
+      Tagesordnung ab Wochentagsherr; Nachtordnung ab dem 5. Herrn danach;
+      der 8. Abschnitt ist herrenlos. Ohne SWE (kein Sonnenaufgang) werden
+      nur die fünf Sonnen-Upagrahas geliefert.
+    """
+    def _rec(name: str, l: float, family: str, note: str = "") -> Dict:
+        l = norm(l)
+        si = int(l // 30) % 12
+        deg = l % 30
+        span = 360.0 / 27.0
+        ni = int(l / span) % 27
+        pada = int((l % span) / (span / 4)) + 1
+        return {"name": name, "lon": round(l, 4), "sign": SIGNS[si],
+                "sign_idx": si, "pos": f"{int(deg)}\u00b0 {int((deg%1)*60):02d}'",
+                "nakshatra": NAKSHATRAS[ni][0], "nak_lord": NAKSHATRAS[ni][1],
+                "pada": pada,
+                "d9_sign_idx": navamsa_sign(l),
+                "d9_sign": SIGNS[navamsa_sign(l)],
+                "family": family, "note": note}
+
+    out: Dict[str, Dict] = {}
+
+    # ── 1. Sonnen-basiert ────────────────────────────────────────────────
+    dhuma = norm(sun_sid + 133.0 + 20.0 / 60.0)
+    vyati = norm(360.0 - dhuma)
+    pari  = norm(vyati + 180.0)
+    chapa = norm(360.0 - pari)
+    upak  = norm(chapa + 16.0 + 40.0 / 60.0)
+    out["Dhuma"]      = _rec("Dhūma", dhuma, "solar")
+    out["Vyatipata"]  = _rec("Vyatīpāta", vyati, "solar")
+    out["Parivesha"]  = _rec("Pariveṣa", pari, "solar")
+    out["Indrachapa"] = _rec("Indrachāpa", chapa, "solar")
+    out["Upaketu"]    = _rec("Upaketu", upak, "solar")
+
+    # ── 2. Zeit-basiert (braucht Sonnenauf-/-untergang) ──────────────────
+    if not _SWE:
+        return out
+    try:
+        # letzter Sonnenaufgang <= jd (vedischer Tagesbeginn)
+        rise = _sun_rise_set(jd - 2.0, lat, lon, swe.CALC_RISE)
+        sr_prev = None
+        guard = 0
+        while rise is not None and rise <= jd and guard < 5:
+            sr_prev = rise
+            rise = _sun_rise_set(rise + 0.01, lat, lon, swe.CALC_RISE)
+            guard += 1
+        if sr_prev is None:
+            return out
+        ss_next = _sun_rise_set(sr_prev + 0.01, lat, lon, swe.CALC_SET)
+        if ss_next is None:
+            return out
+
+        day_lord_idx = (int(sr_prev + 0.5) + 1) % 7   # 0=Sonntag … 6=Samstag
+        if jd < ss_next:                              # Taggeburt
+            t0, t1 = sr_prev, ss_next
+            start_idx = day_lord_idx
+            arc = "Tagbogen"
+        else:                                         # Nachtgeburt
+            sr_next = _sun_rise_set(ss_next + 0.01, lat, lon, swe.CALC_RISE)
+            if sr_next is None:
+                return out
+            t0, t1 = ss_next, sr_next
+            start_idx = (day_lord_idx + 4) % 7        # 5. Herr ab Tagesherr
+            arc = "Nachtbogen"
+        part = (t1 - t0) / 8.0
+        lord_at = {}                                   # Herr → Abschnittsbeginn
+        for i in range(7):                             # 8. Abschnitt herrenlos
+            lord_at[_WEEK_LORDS[(start_idx + i) % 7]] = t0 + i * part
+
+        def _asc_at(t: float) -> float:
+            swe.set_sid_mode(swe.SIDM_LAHIRI, 0, 0)
+            return _swe_asc(t, lat, lon)
+
+        for upa, lord, mid, note in (
+                ("Gulika",       "Saturn",  False, "Beginn Saturn-Abschnitt"),
+                ("Mandi",        "Saturn",  True,  "Mitte Saturn-Abschnitt"),
+                ("Kala",         "Sun",     False, "Beginn Sonnen-Abschnitt"),
+                ("Mrityu",       "Mars",    False, "Beginn Mars-Abschnitt"),
+                ("Ardhaprahara", "Mercury", False, "Beginn Merkur-Abschnitt"),
+                ("Yamaghantaka", "Jupiter", False, "Beginn Jupiter-Abschnitt")):
+            t = lord_at.get(lord)
+            if t is None:
+                continue
+            if mid:
+                t += part / 2.0
+            disp = {"Gulika": "Gulika", "Mandi": "Māndi", "Kala": "Kāla",
+                    "Mrityu": "Mṛtyu", "Ardhaprahara": "Ardhaprahara",
+                    "Yamaghantaka": "Yamaghaṇṭaka"}[upa]
+            out[upa] = _rec(disp, _asc_at(t), "kala", f"{note} ({arc})")
+    except Exception:
+        pass
     return out
 
 
@@ -950,7 +1636,7 @@ def compute_yogas(planets: Dict, lagna_idx: int) -> List[Dict]:
     def add(name, group, plist, detail): Y.append(
         {"name": name, "group": group, "planets": list(plist), "detail": detail})
 
-    # ── Pancha Mahapurusha (kendra from Lagna OR Moon — common convention) ───────
+    # ── Pancha Mahapurusha (kendra from Lagna OR Moon - common convention) ───────
     moon_si = planets["Moon"]["sign_idx"]
     for p, nm in _PMP.items():
         exa = EXALT_SIGN.get(p) == si[p]
@@ -975,17 +1661,17 @@ def compute_yogas(planets: Dict, lagna_idx: int) -> List[Dict]:
     kendra_l  = {lord_of(h) for h in (1, 4, 7, 10)}
     trikona_l = {lord_of(h) for h in (1, 5, 9)}
     seen = set()
-    # Dharma-Karmadhipati — the 9th (dharma) and 10th (karma) lords linked (top Raja yoga)
+    # Dharma-Karmadhipati - the 9th (dharma) and 10th (karma) lords linked (top Raja yoga)
     L9, L10 = lord_of(9), lord_of(10)
     if L9 == L10:
         add("Dharma-Karmadhipati Yoga", "Raja", [L9],
-            f"{L9} rules both the 9th and 10th — dharma and karma combined.")
+            f"{L9} rules both the 9th and 10th - dharma and karma combined.")
     else:
         rel = link(L9, L10)
         if rel:
             seen.add(tuple(sorted((L9, L10))))
             add("Dharma-Karmadhipati Yoga", "Raja", [L9, L10],
-                f"9th lord {L9} and 10th lord {L10} linked by {rel} — a powerful Raja yoga.")
+                f"9th lord {L9} and 10th lord {L10} linked by {rel} - a powerful Raja yoga.")
     for a in sorted(kendra_l):
         for b in sorted(trikona_l):
             if a == b or tuple(sorted((a, b))) in seen:
@@ -996,7 +1682,7 @@ def compute_yogas(planets: Dict, lagna_idx: int) -> List[Dict]:
                 add("Raja Yoga", "Raja", [a, b],
                     f"Kendra lord {a} and trikona lord {b} linked by {rel}.")
 
-    # ── Dhana (wealth) yogas — links among 2/5/9/11 lords ───────────────────────
+    # ── Dhana (wealth) yogas - links among 2/5/9/11 lords ───────────────────────
     wl = [(h, lord_of(h)) for h in (2, 5, 9, 11)]
     dseen = set()
     for i in range(len(wl)):
@@ -1013,7 +1699,7 @@ def compute_yogas(planets: Dict, lagna_idx: int) -> List[Dict]:
                 add("Dhana Yoga", "Dhana", [a, b],
                     f"Lords of houses {h1} & {h2} ({a}, {b}) linked by {rel}.")
 
-    # ── Vipareeta Raja yogas — dusthana lords in dusthanas ──────────────────────
+    # ── Vipareeta Raja yogas - dusthana lords in dusthanas ──────────────────────
     for h, nm in ((6, "Harsha"), (8, "Sarala"), (12, "Vimala")):
         L = lord_of(h)
         if hs[L] in (6, 8, 12):
@@ -1030,7 +1716,7 @@ def compute_yogas(planets: Dict, lagna_idx: int) -> List[Dict]:
         if vasi:  add("Vasi Yoga",  "Sun", vasi,  "Planet(s) in the 12th from the Sun.")
     if conj("Sun", "Mercury"):
         add("Budha-Aditya Yoga", "Sun", ["Sun", "Mercury"],
-            "Sun and Mercury conjunct — intelligence and skill.")
+            "Sun and Mercury conjunct - intelligence and skill.")
 
     # ── Moon yogas ──────────────────────────────────────────────────────────────
     m2  = [p for p in _TARA if dist(p, "Moon") == 2]
@@ -1043,7 +1729,7 @@ def compute_yogas(planets: Dict, lagna_idx: int) -> List[Dict]:
         if m12: add("Anapha Yoga",  "Moon", m12, "Planet(s) in the 12th from the Moon.")
     if not m2 and not m12 and not mcj:
         add("Kemadruma Yoga", "Moon", ["Moon"],
-            "No planets in the 2nd, 12th, or with the Moon — a challenging lunar yoga "
+            "No planets in the 2nd, 12th, or with the Moon - a challenging lunar yoga "
             "(often cancelled by planets in kendras from the Moon).")
     if dist("Jupiter", "Moon") in (1, 4, 7, 10):
         add("Gajakesari Yoga", "Moon", ["Moon", "Jupiter"],
@@ -1059,37 +1745,49 @@ def compute_yogas(planets: Dict, lagna_idx: int) -> List[Dict]:
     amala_l = [p for p in _BENEFS if hs[p] == 10]
     amala_m = [p for p in _BENEFS if dist(p, "Moon") == 10]
     if amala_l:
-        add("Amala Yoga", "Other", amala_l, "Benefic in the 10th from the Lagna — lasting repute.")
+        add("Amala Yoga", "Other", amala_l, "Benefic in the 10th from the Lagna - lasting repute.")
     elif amala_m:
         add("Amala Yoga", "Other", amala_m, "Benefic in the 10th from the Moon.")
+    # Neecha Bhanga — Aufhebung der Debilitation. Klassisch gibt es mehrere
+    # Auslöser; geprüft werden zwei:
+    #   (a) der Zeichenherr steht in einem Kendra vom Lagna,
+    #   (b) der Zeichenherr steht IM SELBEN ZEICHEN, ist dem debilitierten
+    #       Planeten also beigesellt (z.B. Venus nīca in Jungfrau zusammen
+    #       mit Merkur). Fall (b) wurde vorher nur zufällig erkannt — nämlich
+    #       dann, wenn dieses Zeichen gerade ein Kendra war.
     for p in PLANET_ORDER:
         if DEBIL_SIGN.get(p) == si[p]:
             sl = SIGN_LORDS[SIGNS[si[p]]]
+            why = []
+            if si.get(sl) == si[p]:
+                why.append(f"its sign-lord {sl} is with it in the same sign")
             if hs.get(sl) in (1, 4, 7, 10):
+                why.append(f"its sign-lord {sl} sits in a kendra")
+            if why:
                 add("Neecha Bhanga Raja Yoga", "Other", [p, sl],
-                    f"{p} is debilitated, but its sign-lord {sl} sits in a kendra — "
+                    f"{p} is debilitated, but {' and '.join(why)} - "
                     "debilitation is cancelled.")
 
-    # Lakshmi — 9th lord strong (own/exalted) in a kendra/trikona, with a strong Lagna lord
+    # Lakshmi - 9th lord strong (own/exalted) in a kendra/trikona, with a strong Lagna lord
     def _strong(p):     return EXALT_SIGN.get(p) == si[p] or si[p] in OWN_SIGNS.get(p, [])
     def _well(p):       return hs[p] in (1, 4, 5, 7, 9, 10)
     L1 = lord_of(1)
     if L1 != L9 and _strong(L9) and _well(L9) and (_strong(L1) or _well(L1)):
         add("Lakshmi Yoga", "Dhana", [L1, L9],
             f"9th lord {L9} strong in a kendra/trikona (house {hs[L9]}) and Lagna lord "
-            f"{L1} well-placed — wealth and grace.")
+            f"{L1} well-placed - wealth and grace.")
 
-    # Vasumati — natural benefics in the upachaya houses (3, 6, 10, 11) from Lagna or Moon
+    # Vasumati - natural benefics in the upachaya houses (3, 6, 10, 11) from Lagna or Moon
     vas_l = [p for p in _BENEFS if hs[p] in (3, 6, 10, 11)]
     vas_m = [p for p in _BENEFS if dist(p, "Moon") in (3, 6, 10, 11)]
     if len(vas_l) >= 2:
         add("Vasumati Yoga", "Dhana", vas_l,
-            "Benefics in the upachaya houses (3/6/10/11) from the Lagna — steady wealth.")
+            "Benefics in the upachaya houses (3/6/10/11) from the Lagna - steady wealth.")
     elif len(vas_m) >= 2:
         add("Vasumati Yoga", "Dhana", vas_m,
-            "Benefics in the upachaya houses (3/6/10/11) from the Moon — steady wealth.")
+            "Benefics in the upachaya houses (3/6/10/11) from the Moon - steady wealth.")
 
-    # Malika (Mala) — the seven classical planets occupy seven consecutive houses
+    # Malika (Mala) - the seven classical planets occupy seven consecutive houses
     _CLASSICAL = ["Sun", "Moon", "Mars", "Mercury", "Jupiter", "Venus", "Saturn"]
     _MALIKA = {1: "Lagna", 2: "Dhana", 3: "Vikrama", 4: "Sukha", 5: "Putra", 6: "Shatru",
                7: "Kalatra", 8: "Randhra", 9: "Bhagya", 10: "Karma", 11: "Labha", 12: "Vyaya"}
@@ -1100,7 +1798,7 @@ def compute_yogas(planets: Dict, lagna_idx: int) -> List[Dict]:
             if run == occ:
                 end = ((s - 1 + 6) % 12) + 1
                 add(f"Malika Yoga · {_MALIKA[s]}", "Other", _CLASSICAL,
-                    f"All seven planets fall in seven consecutive houses (H{s}–H{end}) — "
+                    f"All seven planets fall in seven consecutive houses (H{s}–H{end}) - "
                     "a 'garland' yoga.")
                 break
 
@@ -1110,31 +1808,31 @@ def compute_yogas(planets: Dict, lagna_idx: int) -> List[Dict]:
     if L4 != L9 and (hs[L4] - hs[L9]) % 12 in (0, 3, 6, 9) and (_strong(L1) or _well(L1)):
         add("Kahala Yoga", "Raja", [L4, L9],
             f"4th lord {L4} and 9th lord {L9} in mutual kendras with a strong Lagna lord "
-            f"{L1} — drive, courage and leadership.")
+            f"{L1} - drive, courage and leadership.")
     if _strong(L1) and hs[L1] in KEND and aspects("Jupiter", L1):
         add("Chamara Yoga", "Raja", [L1, "Jupiter"],
             f"Lagna lord {L1} exalted/own in a kendra (house {hs[L1]}) and aspected by Jupiter "
-            "— honour, eloquence and a long life.")
+            "- honour, eloquence and a long life.")
     ben_kend = [p for p in _BENEFS if hs[p] in KEND]
     if ben_kend and not any(hs[p] in (6, 8) for p in PLANET_ORDER):
         add("Parvata Yoga", "Raja", ben_kend,
-            "Benefics in kendras with the 6th and 8th houses empty — fame, prosperity and "
+            "Benefics in kendras with the 6th and 8th houses empty - fame, prosperity and "
             "a charitable nature.")
     _SARAS_H = (1, 2, 4, 5, 7, 9, 10)
     if (all(hs[p] in _SARAS_H for p in _BENEFS)
             and (_strong("Jupiter") or hs["Jupiter"] in (1, 4, 5, 7, 9, 10))):
         add("Saraswati Yoga", "Other", list(_BENEFS),
-            "Mercury, Jupiter and Venus in kendras/trikonas/2nd with Jupiter strong — "
+            "Mercury, Jupiter and Venus in kendras/trikonas/2nd with Jupiter strong - "
             "learning, arts, wisdom and eloquence.")
 
     return Y
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# MUHURTA (electional) — favourable days for an activity over a window
+# MUHURTA (electional) - favourable days for an activity over a window
 # ══════════════════════════════════════════════════════════════════════════════
 def _sun_moon_sid(jd: float):
-    """Sidereal Sun & Moon only — fast, network-free (for day-by-day scanning)."""
+    """Sidereal Sun & Moon only - fast, network-free (for day-by-day scanning)."""
     if _SWE:
         return norm(_swe_planet("Sun", jd)), norm(_swe_planet("Moon", jd))
     ayan = _ayanamsha(jd)
@@ -1268,11 +1966,11 @@ def compute_muhurta(activity: str, lat: float, lon: float, tz_offset: float,
                 rating = ("Excellent" if score >= 3 else "Good" if score >= 2
                           else "Fair" if score >= 1 else "Caution")
             else:
-                score, rating, flags = -1, "— not for this", ["nakshatra not used here"]
+                score, rating, flags = -1, "- not for this", ["nakshatra not used here"]
             out.append({"date": d.isoformat(), "weekday": vara, "nakshatra": nak,
                         "favourable": fav, "window": f"{hm(a)}–{hm(b)}", "tithi": pan["tithi"],
                         "yoga": pan["yoga"], "karana": pan["karana"],
-                        "rating": rating, "score": score, "flags": ", ".join(flags) or "—"})
+                        "rating": rating, "score": score, "flags": ", ".join(flags) or "-"})
     return out
 
 
@@ -1336,7 +2034,7 @@ def muhurta_grid(activity: str, lat: float, lon: float, tz_offset: float,
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# ASHTAKOOTA — marriage / partnership compatibility (Guna Milan, 36 points)
+# ASHTAKOOTA - marriage / partnership compatibility (Guna Milan, 36 points)
 # ══════════════════════════════════════════════════════════════════════════════
 _VARNA = {3: 4, 7: 4, 11: 4, 0: 3, 4: 3, 8: 3, 1: 2, 5: 2, 9: 2, 2: 1, 6: 1, 10: 1}
 _VASHYA_GRP = {0: "Q", 1: "Q", 8: "Q", 9: "Q", 2: "H", 5: "H", 6: "H", 10: "H",
@@ -1374,101 +2072,22 @@ _GM_PTS = {("F", "F"): 5, ("F", "N"): 4, ("N", "F"): 4, ("N", "N"): 3,
            ("F", "E"): 1, ("E", "F"): 1, ("N", "E"): 0.5, ("E", "N"): 0.5, ("E", "E"): 0}
 
 
-def compute_compatibility(boy: Dict, girl: Dict) -> Dict:
-    """Ashtakoota Guna Milan. boy/girl = {'nak': 0..26, 'rashi': 0..11}. Returns the 8
-    kutas (got/max), the 36-point total, and any Nadi/Bhakoot dosha."""
-    bn, gn, br, gr = boy["nak"], girl["nak"], boy["rashi"], girl["rashi"]
-    res = {"kutas": [], "total": 0.0, "max": 36}
-
-    def add(name, got, mx, note):
-        res["kutas"].append({"name": name, "got": float(got), "max": mx, "note": note})
-        res["total"] += got
-
-    add("Varna", 1 if _VARNA[br] >= _VARNA[gr] else 0, 1,
-        "Spiritual/ego compatibility (boy's varna should be ≥ girl's).")
-    add("Vashya", _VASHYA_PTS.get((_VASHYA_GRP[br], _VASHYA_GRP[gr]), 0), 2,
-        "Mutual attraction and control.")
-
-    def tara_ok(a, b):
-        return (((b - a) % 27) + 1) % 9 not in (3, 5, 7)
-    t = (1 if tara_ok(bn, gn) else 0) + (1 if tara_ok(gn, bn) else 0)
-    add("Tara", {2: 3, 1: 1.5, 0: 0}[t], 3, "Health & destiny (birth-star count).")
-
-    ya, yb = _YONI[bn], _YONI[gn]
-    yp = 4 if ya == yb else (0 if frozenset((ya, yb)) in _YONI_ENEMY else 2)
-    add("Yoni", yp, 4, f"Physical/intimate nature ({ya} ↔ {yb}).")
-
-    la, lb = SIGN_LORDS[SIGNS[br]], SIGN_LORDS[SIGNS[gr]]
-
-    def rel(x, y):
-        if x == y:
-            return "F"
-        fr, en = _NAT_FRIEND[x]
-        return "F" if y in fr else "E" if y in en else "N"
-    gm = 5 if la == lb else _GM_PTS[(rel(la, lb), rel(lb, la))]
-    add("Graha Maitri", gm, 5, f"Mind & lords' friendship ({la} ↔ {lb}).")
-
-    add("Gana", _GANA_PTS[(_GANA[bn], _GANA[gn])], 6,
-        f"Temperament ({_GANA[bn]} ↔ {_GANA[gn]}).")
-
-    c1, c2 = ((gr - br) % 12) + 1, ((br - gr) % 12) + 1
-    bad = {frozenset((2, 12)), frozenset((5, 9)), frozenset((6, 8))}
-    add("Bhakoot", 0 if frozenset((c1, c2)) in bad else 7, 7,
-        "Emotional/financial harmony (dosha for 2-12, 5-9, 6-8 sign positions).")
-
-    add("Nadi", 0 if _NADI[bn] == _NADI[gn] else 8, 8,
-        f"Health & progeny ({_NADI[bn]} ↔ {_NADI[gn]}; same nadi = dosha).")
-
-    # ── doshas with standard cancellations ──────────────────────────────────────
-    res["doshas"] = []
-    if _NADI[bn] == _NADI[gn]:
-        canc = None
-        if br == gr and bn != gn:
-            canc = "same Moon sign but different nakshatra"
-        elif bn == gn and boy.get("pada") and girl.get("pada") and boy["pada"] != girl["pada"]:
-            canc = "same nakshatra but different pada"
-        elif la == lb or rel(la, lb) == "F":
-            canc = "Moon-sign lords are the same / friends"
-        res["doshas"].append({"name": "Nadi", "active": canc is None,
-                              "reason": canc or "same nadi — no standard cancellation applies"})
-    if frozenset((c1, c2)) in bad:
-        canc = None
-        if la == lb:
-            canc = "both Moon signs share one lord"
-        elif rel(la, lb) == "F" and rel(lb, la) == "F":
-            canc = "Moon-sign lords are mutual friends"
-        res["doshas"].append({"name": "Bhakoot", "active": canc is None,
-                              "reason": canc or "no standard cancellation applies"})
-    return res
+# [removed] legacy compute_compatibility(boy,girl) — superseded by the
+# chart-based compute_compatibility() further below.
 
 
-_MANGAL_HOUSES = {1, 2, 4, 7, 8, 12}
-
-
-def mangal_dosha(planets: Dict, lagna_idx: int) -> Dict:
-    """Mangal/Kuja (Manglik) check: Mars in 1/2/4/7/8/12 from the Lagna or the Moon."""
-    mars = planets["Mars"]["sign_idx"]
-    hl = (mars - lagna_idx) % 12 + 1
-    hm = (mars - planets["Moon"]["sign_idx"]) % 12 + 1
-    refs = []
-    if hl in _MANGAL_HOUSES:
-        refs.append(f"Lagna H{hl}")
-    if hm in _MANGAL_HOUSES:
-        refs.append(f"Moon H{hm}")
-    return {"manglik": bool(refs), "lagna_house": hl, "moon_house": hm, "refs": refs,
-            "note": ("Mars afflicts " + ", ".join(refs)) if refs
-                    else "Mars is not in 1/2/4/7/8/12 — no Mangal dosha."}
-
+# [removed] legacy Manglik helper + its house-set constant —
+# superseded by _mangal_dosha(chart) in the compatibility module.
 
 def nak_index(name: str) -> int:
     return next((i for i, (n, _) in enumerate(NAKSHATRAS) if n == name), 0)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SHAD BALA — six-fold planetary strength (virupas; 60 virupas = 1 rupa)
+# SHAD BALA - six-fold planetary strength (virupas; 60 virupas = 1 rupa)
 # Position/time parts (Sthana, Dig, Paksha, Vara, Naisargika) are exact; Cheshta,
 # Ayana, Nathonnatha, Tribhaga and Hora are approximated (the lightweight engine
-# carries no planetary speed, declination or sunrise) — labelled as such.
+# carries no planetary speed, declination or sunrise) - labelled as such.
 # ══════════════════════════════════════════════════════════════════════════════
 _SB = ["Sun", "Moon", "Mars", "Mercury", "Jupiter", "Venus", "Saturn"]
 _SB_EXALT = {"Sun": 10.0, "Moon": 33.0, "Mars": 298.0, "Mercury": 165.0,
@@ -1683,7 +2302,8 @@ def compute_bhavabala(planets, lagna_idx, asc_lon, shadbala) -> Dict:
 
 def generate_chart(year:int, month:int, day:int, hour:int, minute:int,
                    lat:float, lon:float, tz_offset:float,
-                   location:str="", name:str="", gender:str="") -> Dict:
+                   location:str="", name:str="", gender:str="",
+                   varsha_year:Optional[int]=None) -> Dict:
     """Compute a complete Jyotiṣa birth chart (data only, no rendering)."""
     local_dt = datetime(year,month,day,hour,minute,
                         tzinfo=timezone(timedelta(hours=tz_offset)))
@@ -1695,6 +2315,13 @@ def generate_chart(year:int, month:int, day:int, hour:int, minute:int,
 
     planets = {pname: _planet_record(pname, slon) for pname,slon in lons.items()}
 
+    # Rückläufigkeits-Flags: siehe _retro_flags(); Anzeige in Charts als
+    # "SaR"-Stil, ausserdem Basis für compute_afflictions und Medizin-KAP.
+    for _rp, _rv in _retro_flags(jd).items():
+        planets[_rp]["retrograde"] = _rv
+
+    _apply_compound_dignity(planets)
+
     lagna_idx = planets["Ascendant"]["sign_idx"]
     houses    = {h: SIGNS[(lagna_idx+h-1)%12] for h in range(1,13)}
     occupants: Dict[int,List[str]] = {h:[] for h in range(1,13)}
@@ -1702,7 +2329,7 @@ def generate_chart(year:int, month:int, day:int, hour:int, minute:int,
         if pname=="Ascendant": continue
         h=(pd["sign_idx"]-lagna_idx)%12+1; pd["house"]=h; occupants[h].append(pname)
 
-    # Bhava Chalit — equal houses with the Ascendant as each bhava's madhya (middle),
+    # Bhava Chalit - equal houses with the Ascendant as each bhava's madhya (middle),
     # so a planet near a sign edge can fall into a different bhava than its rasi house.
     asc_lon = lons["Ascendant"]
     bhava_house: Dict[str, int] = {}
@@ -1722,6 +2349,9 @@ def generate_chart(year:int, month:int, day:int, hour:int, minute:int,
                         today_dt.hour + today_dt.minute/60)
     t_lons, _, _ = compute_positions(jd_today, lat, lon)
     transits  = {pname: _planet_record(pname, slon) for pname,slon in t_lons.items()}
+    for _rp, _rv in _retro_flags(jd_today).items():
+        if _rp in transits:
+            transits[_rp]["retrograde"] = _rv
     transit_local = today_dt.astimezone(timezone(timedelta(hours=tz_offset)))
 
     natal_si  = {p: planets[p]["sign_idx"] for p in planets}
@@ -1730,19 +2360,81 @@ def generate_chart(year:int, month:int, day:int, hour:int, minute:int,
     d9  = compute_divisional(lons, 9)
     d3  = compute_divisional(lons, 3)
     d10 = compute_divisional(lons, 10)
+    d4  = compute_divisional(lons, 4)
+    # Full versions with per-planet dignity + vargottama (single source of truth)
+    d9_full  = compute_divisional_full(lons, 9)
+    d3_full  = compute_divisional_full(lons, 3)
+    d10_full = compute_divisional_full(lons, 10)
+    d4_full  = compute_divisional_full(lons, 4)
 
+    # Jahr des Varshaphala. Ohne Vorgabe das laufende Solarrückkehr-Jahr:
+    # Liegt die diesjährige Rückkehr noch in der Zukunft (Geburtstag später im
+    # Jahr), gilt noch die vorjährige — sonst deutete der Bericht ein Jahr,
+    # das für die Person noch gar nicht begonnen hat.
+    if varsha_year is None:
+        _vy = datetime.now().year
+        try:
+            _now = datetime.utcnow()
+            _jd_now = julian_day(_now.year, _now.month, _now.day,
+                                 _now.hour + _now.minute / 60.0)
+            if find_solar_return_jd(lons["Sun"], month, day, _vy) > _jd_now:
+                _vy -= 1
+        except Exception:
+            pass
+        varsha_year = _vy
     varshaphala = compute_varshaphala(
         year, month, day, lons["Sun"], lagna_idx,
-        lat, lon, datetime.now().year)
+        lat, lon, int(varsha_year))
 
     jaimini = compute_jaimini(lons, lagna_idx)
-    chara_dasha = build_chara_dasha(
-        {p: planets[p]["sign_idx"] for p in planets if p != "Ascendant"},
-        lons, lagna_idx, local_dt.replace(tzinfo=None))
+    _chara_ps = {p: planets[p]["sign_idx"] for p in planets if p != "Ascendant"}
+    _chara_bd = local_dt.replace(tzinfo=None)
+    # Massgeblich ist die PADA-Regel (Jaimini-Sūtra-Tradition, wie Kala) —
+    # sie speist Tab und Deutung.
+    chara_dasha = build_chara_dasha(_chara_ps, lons, lagna_idx, _chara_bd,
+                                    seq_pada=True, dur_pada=True)
+    # Zweite Schule nur zum Vergleich (durchgehend Zeichennummer, K.N. Rao).
+    # Reine Anzeige, erreicht keinen Faktenblock.
+    chara_dasha_alt = build_chara_dasha(_chara_ps, lons, lagna_idx, _chara_bd,
+                                        seq_pada=False, dur_pada=False)
 
     panchang = compute_panchang(lons["Sun"], lons["Moon"], local_dt.isoweekday() % 7,
                                 planets["Moon"]["nakshatra"], planets["Moon"]["nak_lord"])
+    # Upagrahas (Schattenplaneten) — Anzeige im Planeten-Tab; Häuser vom Lagna
+    try:
+        upagrahas = compute_upagrahas(jd, lat, lon, lons["Sun"])
+        for _ur in upagrahas.values():
+            _ur["house"] = (_ur["sign_idx"] - lagna_idx) % 12 + 1
+    except Exception:
+        upagrahas = {}
+
+    # Äussere Planeten (Referenz, nicht-klassisch) — Häuser vom Lagna
+    try:
+        outer_planets = compute_outer_planets(jd)
+        for _orc in outer_planets.values():
+            _orc["house"] = (_orc["sign_idx"] - lagna_idx) % 12 + 1
+    except Exception:
+        outer_planets = {}
+
     yogas = compute_yogas(planets, lagna_idx)
+    # Varga-Yogas: VRY und Parivartana aus D9/D10 in die Yoga-Liste aufnehmen,
+    # damit sie im Yogas-Tab und in den KI-Fakten sichtbar sind (Fund: ein
+    # 1↔9-Parivartana im Daśāṃśa wurde bisher nirgends ausgewiesen).
+    for _vf, _vlabel in ((d9_full, "D9"), (d10_full, "D10")):
+        _vm = _vf.get("_meta", {}) if isinstance(_vf, dict) else {}
+        for _e in _vm.get("vipareeta_raja_yoga", []):
+            yogas.append({"name": f"Vipareeta Raja Yoga ({_vlabel})",
+                          "group": "Varga", "planets": [_e.split(" ")[0]],
+                          "detail": f"In the {_vlabel} chart: {_e}."})
+        for _e in _vm.get("parivartana", []):
+            _pl = [_e.split(" ")[0], _e.split(" \u21c4 ")[1].split(" ")[0]] \
+                if " \u21c4 " in _e else []
+            _kind = "Raja Parivartana" if "(Raja)" in _e else \
+                    "Dainya Parivartana" if "(Dainya)" in _e else "Parivartana"
+            yogas.append({"name": f"{_kind} Yoga ({_vlabel})",
+                          "group": "Varga", "planets": _pl,
+                          "detail": f"In the {_vlabel} chart: {_e}."})
+
     shadbala = compute_shadbala(planets, lagna_idx, asc_lon, lons["Sun"], lons["Moon"],
                                 ayan, hour + minute / 60.0, local_dt.isoweekday() % 7)
     bhavabala = compute_bhavabala(planets, lagna_idx, asc_lon, shadbala)
@@ -1754,8 +2446,13 @@ def generate_chart(year:int, month:int, day:int, hour:int, minute:int,
         "meta": {
             "name": name, "gender": gender,
             "birth":    local_dt.strftime("%d %B %Y  %H:%M"),
+            # numeric birth data — display-format-independent (used by chart_html
+            # for the Varshaphala AJAX parameters; never parse the string above)
+            "birth_y": year, "birth_mo": month, "birth_d": day,
+            "birth_h": hour, "birth_min": minute,
             "ut":       ut_dt.strftime("%d %B %Y  %H:%M UTC"),
             "tz":       f"UTC{sgn}{ah:02d}:{am:02d}",
+            "offset":   tz_offset,   # numeric hours — for client-side compat/varshaphala fallback
             "location": location, "lat":lat, "lon":lon,
             "jd":       round(jd,5), "ayan": round(ayan,4), "engine": engine,
         },
@@ -1778,12 +2475,21 @@ def generate_chart(year:int, month:int, day:int, hour:int, minute:int,
         "d9":  d9,  "d9_lagna":  d9["Ascendant"],
         "d3":  d3,  "d3_lagna":  d3["Ascendant"],
         "d10": d10, "d10_lagna": d10["Ascendant"],
+        "d4":  d4,  "d4_lagna":  d4["Ascendant"],
+        "d9_full": d9_full, "d3_full": d3_full, "d10_full": d10_full, "d4_full": d4_full,
+        "aspects":    compute_aspects(planets, lagna_idx),
+        "lordships":  compute_lordships(lagna_idx),
+        "afflictions": compute_afflictions(planets),
         "dashas":      build_dashas(lons["Moon"], local_dt.replace(tzinfo=None)),
         "varshaphala": varshaphala,
         "jaimini":     jaimini,
         "chara_dasha": chara_dasha,
+        "chara_dasha_alt": chara_dasha_alt,
         "panchang":    panchang,
         "yogas":       yogas,
+        "upagrahas":   upagrahas,
+        "conjunctions": compute_conjunctions(planets),
+        "outer_planets": outer_planets,
         "bhava":       {"house": bhava_house, "place": bhava_place},
     }
 
@@ -1794,3 +2500,431 @@ EXAMPLE = dict(
     location="Liestal, Switzerland",
     name="Example Person", gender="Male",
 )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  COMPATIBILITY — Ashtakūṭa (Guṇa Milāna) 36-point system + Mangal Dosha
+#  + house overlays.  All computation lives here (single source of truth).
+#  chart_html.py only renders; report_service.py only routes the AJAX request.
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── Kūṭa reference tables (classical) ─────────────────────────────────────────
+# Varna (max 1): Moon-sign varna. Brahmin>Kshatriya>Vaishya>Shudra by rank.
+_VARNA_BY_SIGN = {  # sign_idx -> varna rank (3=Brahmin highest ... 0=Shudra)
+    3: 3, 7: 3, 11: 3,          # Cancer, Scorpio, Pisces = Brahmin
+    0: 2, 4: 2, 8: 2,           # Aries, Leo, Sagittarius = Kshatriya
+    1: 1, 5: 1, 9: 1,           # Taurus, Virgo, Capricorn = Vaishya
+    2: 0, 6: 0, 10: 0,          # Gemini, Libra, Aquarius = Shudra
+}
+# Vashya Kuta (max 2): mutual attraction / control. Five classical groups:
+#   C = Chatushpada (quadruped), M = Manava/Dvipada (human),
+#   J = Jalachara (water), V = Vanachara (wild), K = Keeta (insect).
+# Sign→group with the classical half-sign splits for Sagittarius & Capricorn.
+def _vashya_group(sign_idx, deg_in_sign):
+    # deg_in_sign: 0..30
+    if sign_idx == 0:  return "C"   # Aries      – quadruped
+    if sign_idx == 1:  return "C"   # Taurus     – quadruped
+    if sign_idx == 2:  return "M"   # Gemini     – human
+    if sign_idx == 3:  return "J"   # Cancer     – water (crab)
+    if sign_idx == 4:  return "V"   # Leo        – wild (lion)
+    if sign_idx == 5:  return "M"   # Virgo      – human
+    if sign_idx == 6:  return "M"   # Libra      – human
+    if sign_idx == 7:  return "K"   # Scorpio    – insect (keeta)
+    if sign_idx == 8:                # Sagittarius – 1st half human, 2nd half quadruped
+        return "M" if deg_in_sign < 15 else "C"
+    if sign_idx == 9:                # Capricorn  – 1st half quadruped, 2nd half water
+        return "C" if deg_in_sign < 15 else "J"
+    if sign_idx == 10: return "M"   # Aquarius   – human
+    if sign_idx == 11: return "J"   # Pisces     – water
+    return "M"
+
+# Full classical 5×5 Vashya point matrix (row = person A group, col = B group).
+# 2 = fully controlled/attracted, 1 = half, 0.5 = mild, 0 = none.
+# Rows/cols order: C, M, J, V, K
+_VASHYA_ORDER = ["C", "M", "J", "V", "K"]
+_VASHYA_MATRIX = {
+    #        C     M     J     V     K
+    "C": {"C":2.0,"M":1.0,"J":1.0,"V":0.0,"K":1.0},
+    "M": {"C":0.5,"M":2.0,"J":0.5,"V":0.0,"K":1.0},
+    "J": {"C":1.0,"M":1.0,"J":2.0,"V":0.5,"K":0.5},
+    "V": {"C":1.0,"M":0.0,"J":0.5,"V":2.0,"K":1.0},
+    "K": {"C":0.5,"M":1.0,"J":1.0,"V":1.0,"K":2.0},
+}
+# Yoni (max 4): 14 animal yonis by nakshatra, with sex; enemy/friend matrix.
+_YONI = [  # nak_idx -> (animal, sex)  (0-based, 27 nakshatras)
+    ("Horse","M"),("Elephant","M"),("Sheep","F"),("Serpent","M"),("Serpent","F"),
+    ("Dog","F"),("Cat","F"),("Sheep","M"),("Cat","M"),("Rat","M"),
+    ("Rat","F"),("Cow","F"),("Buffalo","M"),("Tiger","F"),("Buffalo","F"),
+    ("Tiger","M"),("Deer","F"),("Deer","M"),("Dog","M"),("Monkey","M"),
+    ("Mongoose","M"),("Monkey","F"),("Lion","F"),("Horse","F"),("Lion","M"),
+    ("Cow","M"),("Elephant","F"),
+]
+# Yoni Kuta — full 14×14 compatibility matrix (classical Vivaha values 0–4).
+# 4 = same yoni (best), 3 = friendly, 2 = neutral, 1 = unfriendly, 0 = mortal enemies.
+# Row/column order = the 14 canonical yonis:
+_YONI_ORDER = ["Horse", "Elephant", "Sheep", "Serpent", "Dog", "Cat", "Rat",
+               "Cow", "Buffalo", "Tiger", "Deer", "Monkey", "Mongoose", "Lion"]
+# Matrix rows follow _YONI_ORDER; each row has 14 values (0–4).
+_YONI_MATRIX = [
+    # Hor El Sh Se Do Ca Ra Co Bu Ti De Mo Mn Li
+    [4, 2, 2, 3, 2, 2, 2, 1, 0, 1, 3, 3, 2, 1],  # Horse
+    [2, 4, 3, 3, 2, 2, 2, 2, 3, 1, 2, 3, 2, 0],  # Elephant
+    [2, 3, 4, 2, 1, 2, 1, 3, 3, 1, 2, 0, 3, 1],  # Sheep/Goat
+    [3, 3, 2, 4, 2, 1, 1, 1, 1, 2, 2, 2, 0, 2],  # Serpent
+    [2, 2, 1, 2, 4, 2, 1, 2, 2, 1, 0, 2, 2, 1],  # Dog
+    [2, 2, 2, 1, 2, 4, 0, 2, 2, 1, 3, 3, 2, 2],  # Cat
+    [2, 2, 1, 1, 1, 0, 4, 2, 2, 2, 2, 2, 1, 2],  # Rat
+    [1, 2, 3, 1, 2, 2, 2, 4, 3, 0, 3, 2, 2, 1],  # Cow
+    [0, 3, 3, 1, 2, 2, 2, 3, 4, 1, 2, 2, 2, 1],  # Buffalo
+    [1, 1, 1, 2, 1, 1, 2, 0, 1, 4, 1, 2, 2, 3],  # Tiger
+    [3, 2, 2, 2, 0, 3, 2, 3, 2, 1, 4, 2, 2, 1],  # Deer/Hare
+    [3, 3, 0, 2, 2, 3, 2, 2, 2, 2, 2, 4, 3, 2],  # Monkey
+    [2, 2, 3, 0, 2, 2, 1, 2, 2, 2, 2, 3, 4, 2],  # Mongoose
+    [1, 0, 1, 2, 1, 2, 2, 1, 1, 3, 1, 2, 2, 4],  # Lion
+]
+_YONI_IDX = {name: i for i, name in enumerate(_YONI_ORDER)}
+# Gana (max 6): Deva / Manushya / Rakshasa per nakshatra.
+_GANA = [  # nak_idx -> gana
+    "Deva","Manu","Raksha","Manu","Deva","Manu","Deva","Deva","Raksha",
+    "Raksha","Manu","Manu","Deva","Raksha","Deva","Raksha","Deva","Raksha",
+    "Raksha","Manu","Manu","Deva","Raksha","Raksha","Manu","Manu","Deva",
+]
+# Nadi (max 8): Aadi / Madhya / Antya per nakshatra.
+_NADI = [  # nak_idx -> nadi (0=Aadi,1=Madhya,2=Antya)
+    0,1,2,0,1,2,0,1,2, 2,1,0,2,1,0,2,1,0, 0,1,2,0,1,2,0,1,2,
+]
+# Graha Maitri: planetary friendship (natural). rows/cols index by planet name.
+_FRIEND = {
+    "Sun":     {"friends":{"Moon","Mars","Jupiter"}, "enemies":{"Venus","Saturn"}},
+    "Moon":    {"friends":{"Sun","Mercury"}, "enemies":set()},
+    "Mars":    {"friends":{"Sun","Moon","Jupiter"}, "enemies":{"Mercury"}},
+    "Mercury": {"friends":{"Sun","Venus"}, "enemies":{"Moon"}},
+    "Jupiter": {"friends":{"Sun","Moon","Mars"}, "enemies":{"Mercury","Venus"}},
+    "Venus":   {"friends":{"Mercury","Saturn"}, "enemies":{"Sun","Moon"}},
+    "Saturn":  {"friends":{"Mercury","Venus"}, "enemies":{"Sun","Moon","Mars"}},
+}
+_SIGN_LORD_NAME = ["Mars","Venus","Mercury","Moon","Sun","Mercury",
+                   "Venus","Mars","Jupiter","Saturn","Saturn","Jupiter"]
+
+
+def _tara_points(nak_a, nak_b):
+    """Tara/Dina kuta (max 3): count from A to B and B to A, check remainder."""
+    def one_way(f, t):
+        cnt = ((t - f) % 27) + 1
+        rem = cnt % 9
+        # remainders 3,5,7 are inauspicious (0 pts that direction)
+        return 0.0 if rem in (3, 5, 7) else 1.5
+    return one_way(nak_a, nak_b) + one_way(nak_b, nak_a)
+
+
+def _vashya_points(sa, sb, deg_a=0.0, deg_b=0.0):
+    """Vashya Kuta (max 2) via the full classical 5-group matrix.
+    deg_a/deg_b = Moon's degree in its sign (for Sagittarius/Capricorn half-splits)."""
+    ga = _vashya_group(sa, deg_a)
+    gb = _vashya_group(sb, deg_b)
+    return float(_VASHYA_MATRIX[ga][gb])
+
+
+def _yoni_points(na, nb):
+    """Yoni Kuta (max 4) via the full 14×14 classical matrix."""
+    aa = _YONI[na][0]; ab = _YONI[nb][0]
+    ia = _YONI_IDX.get(aa); ib = _YONI_IDX.get(ab)
+    if ia is None or ib is None:
+        return 2.0
+    return float(_YONI_MATRIX[ia][ib])
+
+
+def _maitri_points(la, lb):
+    if la == lb:
+        return 5.0
+    a_f = lb in _FRIEND.get(la, {}).get("friends", set())
+    a_e = lb in _FRIEND.get(la, {}).get("enemies", set())
+    b_f = la in _FRIEND.get(lb, {}).get("friends", set())
+    b_e = la in _FRIEND.get(lb, {}).get("enemies", set())
+    if a_f and b_f: return 5.0
+    if (a_f and not b_e) or (b_f and not a_e): return 4.0
+    if not a_e and not b_e: return 3.0
+    if (a_e and b_f) or (b_e and a_f): return 1.0
+    if a_e and b_e: return 0.0
+    return 0.5
+
+
+def _gana_points(na, nb):
+    ga, gb = _GANA[na], _GANA[nb]
+    if ga == gb: return 6.0
+    pair = (ga, gb)
+    table = {
+        ("Deva","Manu"):5.0, ("Manu","Deva"):6.0,
+        ("Deva","Raksha"):1.0, ("Raksha","Deva"):5.0,
+        ("Manu","Raksha"):0.0, ("Raksha","Manu"):3.0,
+    }
+    return table.get(pair, 0.0)
+
+
+def _bhakut_points(sa, sb):
+    """Bhakut/Rashi kuta (max 7): inauspicious if 6/8 or 5/9 or 2/12 apart."""
+    d1 = ((sb - sa) % 12) + 1
+    d2 = ((sa - sb) % 12) + 1
+    pair = frozenset((d1, d2))
+    if pair in (frozenset((2,12)), frozenset((5,9)), frozenset((6,8))):
+        return 0.0
+    return 7.0
+
+
+def _nadi_points(na, nb):
+    """Nadi kuta (max 8): same nadi = 0 (dosha), different = 8."""
+    return 0.0 if _NADI[na] == _NADI[nb] else 8.0
+
+
+def compute_ashtakuta(chart_a, chart_b, male="a"):
+    """Full Ashtakūṭa (36-guṇa) compatibility between two charts.
+    Uses each chart's Moon nakshatra & sign. Returns a structured dict.
+    `male` ('a'|'b') marks which chart is the groom for the one gender-directional
+    kūṭa (Varna); everything else is symmetric. Default 'a' keeps the historical
+    chart_a=male convention (partner report), so existing callers are unaffected."""
+    ma, mb = chart_a["planets"]["Moon"], chart_b["planets"]["Moon"]
+    # resolve nakshatra index from name
+    nak_names = [n for n, _ in NAKSHATRAS]
+    na = nak_names.index(ma["nakshatra"]); nb = nak_names.index(mb["nakshatra"])
+    sa, sb = ma["sign_idx"], mb["sign_idx"]
+    la, lb = ma["nak_lord"], mb["nak_lord"]
+    deg_a = ma.get("lon", sa * 30) % 30   # Moon's degree within its sign
+    deg_b = mb.get("lon", sb * 30) % 30
+
+    # Classical rule: point awarded when the groom's varna is equal to or HIGHER
+    # than the bride's. Rank 3=Brahmin(high) … 0=Shudra(low) → male_rank >= female_rank.
+    _s_male, _s_female = (sb, sa) if male == "b" else (sa, sb)
+    varna = 1.0 if _VARNA_BY_SIGN.get(_s_male,0) >= _VARNA_BY_SIGN.get(_s_female,0) else 0.0
+    vashya = _vashya_points(sa, sb, deg_a, deg_b)
+    tara = _tara_points(na, nb)
+    yoni = _yoni_points(na, nb)
+    maitri = _maitri_points(la, lb)
+    gana = _gana_points(na, nb)
+    bhakut = _bhakut_points(sa, sb)
+    nadi = _nadi_points(na, nb)
+
+    kutas = [
+        ("Varna",  varna,  1, "Spirituelle Reife & Ego-Harmonie"),
+        ("Vashya", vashya, 2, "Anziehung & gegenseitige Kontrolle"),
+        ("Tara",   tara,   3, "Gesundheit & Wohlergehen (Nakshatra-Kompatibilität)"),
+        ("Yoni",   yoni,   4, "Körperliche & intime Kompatibilität"),
+        ("Graha Maitri", maitri, 5, "Geistige & seelische Freundschaft"),
+        ("Gana",   gana,   6, "Temperament & Wesensart"),
+        ("Bhakut", bhakut, 7, "Emotionale Bindung, Wohlstand & Familie"),
+        ("Nadi",   nadi,   8, "Gesundheit, Genetik & Nachkommen"),
+    ]
+    total = sum(k[1] for k in kutas)
+
+    # Nadi dosha and Bhakut dosha flags (most important cancellations)
+    nadi_dosha = (nadi == 0.0)
+    bhakut_dosha = (bhakut == 0.0)
+    gana_dosha = (gana == 0.0)
+
+    if total >= 28:   verdict, vcls = "Ausgezeichnet", "exc"
+    elif total >= 21: verdict, vcls = "Gut", "good"
+    elif total >= 18: verdict, vcls = "Akzeptabel", "ok"
+    else:             verdict, vcls = "Herausfordernd", "low"
+
+    return {
+        "kutas": [{"name":k[0],"score":k[1],"max":k[2],"meaning":k[3]} for k in kutas],
+        "total": round(total, 1), "max": 36,
+        "percent": round(total/36*100),
+        "verdict": verdict, "verdict_class": vcls,
+        "nadi_dosha": nadi_dosha, "bhakut_dosha": bhakut_dosha, "gana_dosha": gana_dosha,
+        "moon_a": {"nak":ma["nakshatra"],"sign":ma["sign"]},
+        "moon_b": {"nak":mb["nakshatra"],"sign":mb["sign"]},
+    }
+
+
+def _mangal_dosha(chart):
+    """Mangal (Kuja) Dosha: Mars in houses 1,2,4,7,8,12 from Lagna.
+    (Lagna-only rule — the stricter classical convention.)
+    House from Moon is still computed for reference/display, but does not
+    by itself set the dosha flag."""
+    mars = chart["planets"]["Mars"]
+    h_lagna = mars.get("house", 0)
+    # house from Moon (reference only)
+    moon_si = chart["planets"]["Moon"]["sign_idx"]
+    mars_si = mars["sign_idx"]
+    h_moon = ((mars_si - moon_si) % 12) + 1
+    dosha_houses = {1, 2, 4, 7, 8, 12}
+    from_lagna = h_lagna in dosha_houses
+    from_moon = h_moon in dosha_houses
+    return {
+        "present": from_lagna,          # Lagna-only rule
+        "from_lagna": from_lagna, "house_lagna": h_lagna,
+        "from_moon": from_moon, "house_moon": h_moon,
+        "rule": "lagna",
+    }
+
+
+def compute_compatibility(chart_a, chart_b, male="a"):
+    """Top-level: Ashtakūṭa + Mangal Dosha match + house overlays.
+    `male` ('a'|'b') tells the gender-directional kūṭas (Varna, Strī-Dīrgha,
+    Rāśi) which chart is the groom. Overlays and Mangal stay keyed to chart_a /
+    chart_b (i.e. the display 'A'/'B'), so callers can keep A = the report owner
+    regardless of gender. Default 'a' preserves the historical convention."""
+    ashta = compute_ashtakuta(chart_a, chart_b, male=male)
+    md_a = _mangal_dosha(chart_a)
+    md_b = _mangal_dosha(chart_b)
+    # Mangal match: dosha cancels if both have it (or neither)
+    if md_a["present"] and md_b["present"]:
+        mangal_verdict = "Beide haben Mangal Dosha — der Dosha wird gegenseitig aufgehoben (günstig)."
+        mangal_ok = True
+    elif not md_a["present"] and not md_b["present"]:
+        mangal_verdict = "Keiner hat Mangal Dosha — kein Mars-Konflikt."
+        mangal_ok = True
+    else:
+        who = "Person A" if md_a["present"] else "Person B"
+        mangal_verdict = f"Nur {who} hat Mangal Dosha — klassisch als Ungleichgewicht gewertet; Prüfung im Detail nötig."
+        mangal_ok = False
+
+    # House overlay: where does B's Moon/Sun/Venus fall counted from A's Lagna, and vice versa
+    def overlay(base, other):
+        base_lagna_si = base["planets"]["Ascendant"]["sign_idx"]
+        out = {}
+        for p in ("Moon", "Sun", "Venus", "Mars", "Jupiter"):
+            osi = other["planets"][p]["sign_idx"]
+            out[p] = ((osi - base_lagna_si) % 12) + 1
+        return out
+
+    return {
+        "ashtakuta": ashta,
+        "mangal": {"a": md_a, "b": md_b, "verdict": mangal_verdict, "ok": mangal_ok},
+        "overlay_b_in_a": overlay(chart_a, chart_b),
+        "overlay_a_in_b": overlay(chart_b, chart_a),
+        "extra_milana": compute_extra_milana(chart_a, chart_b, male=male),
+    }
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  EXTRA MILĀNA FACTORS (beyond the 36 guṇa):
+#  Vedha, Rajju, Strī-Dīrgha, Rāśi Kūṭa.
+#  Convention: chart_a = male (Mann), chart_b = female (Frau).
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── Vedha (Nakshatra obstruction) pairs — mutual "piercing" nakshatras (0-based).
+# If the two Moon nakshatras form a Vedha pair, it is a serious affliction.
+_VEDHA_PAIRS = {
+    frozenset((0, 17)),   # Ashwini – Jyeshtha
+    frozenset((1, 16)),   # Bharani – Anuradha
+    frozenset((2, 15)),   # Krittika – Vishakha
+    frozenset((3, 14)),   # Rohini – Swati
+    frozenset((4, 13)),   # Mrigashira – Chitra
+    frozenset((5, 12)),   # Ardra – Hasta
+    frozenset((6, 21)),   # Punarvasu – Shravana
+    frozenset((7, 20)),   # Pushya – Uttara Ashadha
+    frozenset((8, 19)),   # Ashlesha – Purva Ashadha
+    frozenset((9, 18)),   # Magha – Mula
+    frozenset((10, 26)),  # Purva Phalguni – Revati
+    frozenset((11, 25)),  # Uttara Phalguni – Uttara Bhadrapada
+    frozenset((22, 24)),  # Dhanishtha – Purva Bhadrapada
+    frozenset((23, 23)),  # Shatabhisha (self-vedha, some texts)
+}
+
+# ── Rajju: the 27 nakshatras mapped to 5 body-parts (ārohaṇa/avarohaṇa weave).
+# 0=Pada(foot) 1=Kati(hip) 2=Nabhi/Udara(navel) 3=Kantha(neck) 4=Siro(head)
+# Pattern ascends 0-1-2-3-4 then descends 3-2-1-0 and repeats.
+_RAJJU_SEQ = [0,1,2,3,4,3,2,1,0]
+_RAJJU = [ _RAJJU_SEQ[i % 9] for i in range(27) ]
+_RAJJU_NAME = {0:"Pada (Fuß)",1:"Kati (Hüfte)",2:"Nabhi (Nabel)",
+               3:"Kantha (Hals)",4:"Siro (Kopf)"}
+_RAJJU_HARM = {
+    0:"traditionell mit Unruhe/Reisen assoziiert",
+    1:"traditionell mit Themen um Kinder & Wohlstand assoziiert",
+    2:"traditionell mit Belastung der Partnerschaft assoziiert",
+    3:"traditionell als Belastung für die Gesundheit der Frau gedeutet",
+    4:"traditionell als schwerster Rajju gewertet (Gesundheit des Mannes)",
+}
+
+
+def _vedha_check(na, nb):
+    present = frozenset((na, nb)) in _VEDHA_PAIRS
+    return {"present": present,
+            "verdict": "Vedha-Hinweis vorhanden (Nakshatra-Obstruktion) — klassisch als "
+                       "zu beachtender Punkt gewertet; im Gesamtbild und mit möglichen "
+                       "Aufhebungen einzuordnen."
+                       if present else "Kein Vedha — keine Nakshatra-Obstruktion (günstig)."}
+
+
+def _rajju_check(na, nb):
+    ra, rb = _RAJJU[na], _RAJJU[nb]
+    same = (ra == rb)
+    return {
+        "same": same,
+        "part_a": _RAJJU_NAME[ra], "part_b": _RAJJU_NAME[rb],
+        "part": _RAJJU_NAME[ra] if same else None,
+        "harm": _RAJJU_HARM[ra] if same else None,
+        "verdict": (f"Beide Monde in {_RAJJU_NAME[ra]} (gleiche Rajju) — {_RAJJU_HARM[ra]}. "
+                    f"Klassisch als zu beachtender Punkt gewertet; kann durch andere "
+                    f"stärkende Faktoren (Parihara) ausgeglichen werden."
+                    if same else "Verschiedene Rajju — günstig, kein Rajju-Hinweis.")
+    }
+
+
+def _stri_dirgha_check(na_male, nb_female):
+    """Strī-Dīrgha: count from the woman's nakshatra to the man's.
+    Auspicious if the count is greater than 9 (some texts: >=9)."""
+    count = ((na_male - nb_female) % 27) + 1
+    ok = count > 9
+    return {
+        "count": count, "ok": ok,
+        "verdict": (f"Strī-Dīrgha erfüllt (Zählung {count} > 9) — günstig für Langlebigkeit & Wohlstand."
+                    if ok else
+                    f"Strī-Dīrgha nicht erfüllt (Zählung {count} ≤ 9) — klassisch ein schwächerer Punkt, "
+                    f"im Gesamtbild jedoch nachrangig gegenüber den Kern-Kūṭas.")
+    }
+
+
+def _rasi_kuta_check(sa_male, sb_female):
+    """Rāśi Kūṭa (standalone): position of Moon-signs relative to each other.
+    Auspicious when the man's Moon-sign is in the 7th–12th from the woman's,
+    and the woman's Moon-sign in the 2nd–12th from the man's (classical rule).
+    2/12 (dwir-dwadasha), 5/9 (nava-pancham), 6/8 (shashtashtaka) are examined."""
+    # distance man from woman, and woman from man (1-based)
+    d_m_from_w = ((sa_male - sb_female) % 12) + 1
+    d_w_from_m = ((sb_female - sa_male) % 12) + 1
+    pair = frozenset((d_m_from_w, d_w_from_m))
+    # classical adverse combinations
+    if pair == frozenset((6, 8)):
+        ok, note = False, "Shashtashtaka (6/8) — klassisch ein sensibler Punkt; auf Ausgleich durch andere Faktoren achten."
+    elif pair == frozenset((5, 9)):
+        ok, note = True, "Nava-Pancham (5/9) — günstig, harmonisch."
+    elif pair == frozenset((2, 12)):
+        ok, note = False, "Dwir-Dwadasha (2/12) — gemischt; im Gesamtbild einzuordnen."
+    elif d_m_from_w == 1:
+        ok, note = True, "Gleiches Mondzeichen — vertraut, aber prüfe Nadi/Rajju."
+    else:
+        # man's sign in 7th–12th from woman is classically favourable
+        ok = d_m_from_w in (7, 8, 9, 10, 11, 12) or d_w_from_m in (2,3,4,5,6,7)
+        note = ("Mondzeichen-Stellung günstig." if ok
+                else "Mondzeichen-Stellung neutral bis leicht ungünstig.")
+    return {
+        "ok": ok,
+        "man_from_woman": d_m_from_w,
+        "woman_from_man": d_w_from_m,
+        "verdict": note,
+    }
+
+
+def compute_extra_milana(chart_a, chart_b, male="a"):
+    """Extra factors. `male` ('a'|'b') marks the groom chart. Strī-Dīrgha and
+    Rāśi-kūṭa are direction-sensitive (counted from the bride's nakshatra/sign to
+    the groom's); Vedha and Rajju are symmetric. Default 'a' keeps the historical
+    chart_a=male convention, so existing callers are unaffected."""
+    ma, mb = chart_a["planets"]["Moon"], chart_b["planets"]["Moon"]
+    nak_names = [n for n, _ in NAKSHATRAS]
+    na = nak_names.index(ma["nakshatra"])
+    nb = nak_names.index(mb["nakshatra"])
+    sa, sb = ma["sign_idx"], mb["sign_idx"]
+    # Assign groom/bride roles for the direction-sensitive checks.
+    if male == "b":
+        n_m, n_f, s_m, s_f = nb, na, sb, sa
+    else:
+        n_m, n_f, s_m, s_f = na, nb, sa, sb
+    return {
+        "vedha":       _vedha_check(n_m, n_f),        # symmetric
+        "rajju":       _rajju_check(n_m, n_f),        # symmetric
+        "stri_dirgha": _stri_dirgha_check(n_m, n_f),  # from bride → groom
+        "rasi_kuta":   _rasi_kuta_check(s_m, s_f),    # groom/bride directional
+    }
