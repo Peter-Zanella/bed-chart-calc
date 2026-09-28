@@ -20,7 +20,95 @@ from astro_engine import (SIGNS, SIGN_LORDS, PLANET_ORDER, _AKV_PLANETS,
 SAVE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "saved_charts.json")
 
 
+# Streamlit Cloud wipes local files on every reboot. With GIST_TOKEN set in the
+# app's secrets, charts are kept in a private GitHub gist instead; without it the
+# local file is used as before.
+_GIST_DESC = "bed-chart-calc saved charts"
+_GIST_FILE = "saved_charts.json"
+
+
+@st.cache_resource
+def _gist_state() -> dict:
+    # survives script reruns (plain module globals are reset on every rerun)
+    return {"id": None, "data": None, "at": 0.0}
+
+
+_gist = _gist_state()
+
+
+def _gist_token():
+    try:
+        return st.secrets.get("GIST_TOKEN")
+    except Exception:
+        return None
+
+
+def _gh(method: str, url: str, token: str, body=None):
+    import urllib.request
+    req = urllib.request.Request(
+        url if url.startswith("https://") else "https://api.github.com" + url, method=method,
+        data=json.dumps(body).encode() if body is not None else None,
+        headers={"Authorization": f"Bearer {token}",
+                 "Accept": "application/vnd.github+json",
+                 "Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=15) as r:
+        raw = r.read().decode("utf-8")
+    return raw if url.startswith("https://") else json.loads(raw)
+
+
+def _gist_id(token: str):
+    if _gist["id"]:
+        return _gist["id"]
+    try:
+        gid = st.secrets.get("GIST_ID")
+    except Exception:
+        gid = None
+    if not gid:
+        for page in range(1, 6):
+            gists = _gh("GET", f"/gists?per_page=100&page={page}", token)
+            gid = next((g["id"] for g in gists if g.get("description") == _GIST_DESC), None)
+            if gid or len(gists) < 100:
+                break
+    _gist["id"] = gid
+    return gid
+
+
+def _gist_load(token: str) -> dict:
+    import time
+    if _gist["data"] is not None and time.time() - _gist["at"] < 60:
+        return _gist["data"]
+    gid = _gist_id(token)
+    data = {}
+    if gid:
+        f = _gh("GET", f"/gists/{gid}", token)["files"].get(_GIST_FILE)
+        if f:
+            raw = _gh("GET", f["raw_url"], token) if f.get("truncated") else f["content"]
+            data = json.loads(raw or "{}")
+    _gist.update(data=data, at=time.time())
+    return data
+
+
+def _gist_write(token: str, data: dict) -> None:
+    import time
+    files = {_GIST_FILE: {"content": json.dumps(data, indent=2, ensure_ascii=False)}}
+    gid = _gist_id(token)
+    if gid:
+        _gh("PATCH", f"/gists/{gid}", token, {"files": files})
+    else:
+        _gist["id"] = _gh("POST", "/gists", token,
+                          {"description": _GIST_DESC, "public": False, "files": files})["id"]
+    _gist.update(data=data, at=time.time())
+
+
 def load_all() -> dict:
+    token = _gist_token()
+    if token:
+        try:
+            data = dict(_gist_load(token))
+            st.session_state.pop("_gist_error", None)
+            return data
+        except Exception as e:
+            st.session_state["_gist_error"] = str(e)
     try:
         with open(SAVE_PATH, "r", encoding="utf-8") as f:
             return json.load(f)
@@ -29,6 +117,14 @@ def load_all() -> dict:
 
 
 def _write(data: dict) -> bool:
+    token = _gist_token()
+    if token:
+        try:
+            _gist_write(token, data)
+            return True
+        except Exception as e:
+            st.session_state["_gist_error"] = str(e)
+            return False
     try:
         with open(SAVE_PATH, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
@@ -1087,8 +1183,13 @@ with st.sidebar.expander(f"📂 Saved charts ({len(saved)})", expanded=bool(save
             load_entry(key, entry)
         if c3.button("🗑", key=f"del_{key}", use_container_width=True):
             delete_chart_entry(key); st.rerun()
-    st.caption("Saved charts live on the server and reset when the app sleeps. "
-               "**Back up** to a file to keep them, or bookmark a chart's link (below).")
+    if _gist_token() and not st.session_state.get("_gist_error"):
+        st.caption("Saved charts are kept in your private GitHub gist and survive reboots.")
+    else:
+        if st.session_state.get("_gist_error"):
+            st.warning(f"GitHub gist not reachable ({st.session_state['_gist_error']}).")
+        st.caption("Saved charts live on the server and reset when the app sleeps. "
+                   "**Back up** to a file to keep them, or bookmark a chart's link (below).")
     bcol1, bcol2 = st.columns(2)
     if saved:
         bcol1.download_button("⬇ Back up", data=json.dumps(saved, indent=2, ensure_ascii=False),
