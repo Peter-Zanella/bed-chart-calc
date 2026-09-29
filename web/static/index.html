@@ -14,6 +14,7 @@
   <header class="bar">
     <a class="brand" href="#" id="home">✦ Jyotiṣa</a>
     <nav>
+      <button class="ghost" id="btn-prashna" aria-haspopup="dialog">Prashna</button>
       <button class="ghost" id="btn-saved" aria-haspopup="dialog">Saved</button>
       <button class="ghost" id="btn-new">New</button>
     </nav>
@@ -56,9 +57,13 @@
       <div class="who">
         <strong id="s-name"></strong>
         <span id="s-birth"></span>
-        <button class="link" id="btn-edit">Edit</button>
-        <button class="link" id="btn-save">Save</button>
+        <span class="actions">
+          <button class="link" id="btn-edit">Edit</button>
+          <button class="link" id="btn-save">Save</button>
+          <button class="link" id="btn-pdf">PDF</button>
+        </span>
       </div>
+      <p class="hint" id="s-question" hidden></p>
       <div class="chips" id="chips"></div>
     </section>
 
@@ -66,13 +71,13 @@
       <nav class="tabs" role="tablist" id="tabs">
         <button role="tab" data-tab="chart" aria-selected="true">Chart</button>
         <button role="tab" data-tab="planets">Planets</button>
-        <button role="tab" data-tab="akv">Ashtakavarga</button>
-        <button role="tab" data-tab="varsha">Varshaphala</button>
         <button role="tab" data-tab="dasha">Dasha</button>
-        <button role="tab" data-tab="transits">Transits</button>
-        <button role="tab" data-tab="panchang">Panchang</button>
+        <button role="tab" data-tab="timing">Timing</button>
+        <button role="tab" data-tab="strength">Strength</button>
+        <button role="tab" data-tab="more">More</button>
       </nav>
 
+      <!-- Chart -->
       <div class="panel" data-panel="chart">
         <div class="toolbar">
           <div class="seg" id="seg-style">
@@ -84,6 +89,7 @@
             <button data-v="d9">Navamsa D9</button>
             <button data-v="d10">D10</button>
             <button data-v="d3">D3</button>
+            <button data-v="d4">D4</button>
           </div>
         </div>
         <div class="split">
@@ -92,58 +98,153 @@
         </div>
       </div>
 
+      <!-- Planets: planets & houses · yogas -->
       <div class="panel" data-panel="planets" hidden>
-        <h2>Planets</h2><div class="tbl" id="planets"></div>
-        <h2>Houses</h2><div class="tbl" id="houses"></div>
+        <nav class="subtabs"><button data-sub="ph" aria-pressed="true">Planets &amp; houses</button><button data-sub="yogas">Yogas</button></nav>
+        <div class="sub" data-subpanel="ph">
+          <h2>Planets</h2><div class="tbl" id="planets"></div>
+          <h2>Houses</h2><div class="tbl" id="houses"></div>
+          <h2>Upagrahas and outer planets</h2><div class="tbl" id="upagrahas"></div>
+        </div>
+        <div class="sub" data-subpanel="yogas" hidden>
+          <p class="hint">Common Parashari yogas from the D1 (whole-sign houses, graha drishti), plus Vipareeta and Parivartana yogas in D9 and D10. Conventions vary by school; a study aid, not a verdict.</p>
+          <div id="yogas"></div>
+        </div>
       </div>
 
-      <div class="panel" data-panel="akv" hidden>
-        <div class="split">
-          <div class="chart-box" id="akv-box"></div>
-          <div>
-            <p class="hint">Sarvashtakavarga: total points per sign. 30 or more is strong, 26 to 29 average, 25 or less weak (the average is 28).</p>
-            <div class="tbl" id="akv-transit"></div>
+      <!-- Dasha: vimshottari · jaimini -->
+      <div class="panel" data-panel="dasha" hidden>
+        <nav class="subtabs"><button data-sub="vim" aria-pressed="true">Vimshottari</button><button data-sub="jaimini">Jaimini</button></nav>
+        <div class="sub" data-subpanel="vim">
+          <p class="now" id="dasha-now"></p>
+          <div id="dasha-tree"></div>
+        </div>
+        <div class="sub" data-subpanel="jaimini" hidden>
+          <div class="kv" id="jaimini-kv"></div>
+          <div class="split" style="margin-top:1rem">
+            <div class="chart-box" id="jaimini-box"></div>
+            <div class="tbl" id="jaimini-table"></div>
+          </div>
+          <h2>Chara Dasha</h2>
+          <p class="hint" id="chara-note"></p>
+          <p class="now" id="chara-now"></p>
+          <div id="chara-tree"></div>
+        </div>
+      </div>
+
+      <!-- Timing: transits · varshaphala · panchang · muhurta · eclipses -->
+      <div class="panel" data-panel="timing" hidden>
+        <nav class="subtabs">
+          <button data-sub="transits" aria-pressed="true">Transits</button><button data-sub="varsha">Varshaphala</button><button data-sub="panchang">Panchang</button><button data-sub="muhurta">Muhurta</button><button data-sub="eclipses">Eclipses</button>
+        </nav>
+        <div class="sub" data-subpanel="transits">
+          <p class="hint" id="transit-when"></p>
+          <div class="split">
+            <div class="chart-box" id="transit-box"></div>
+            <div class="tbl" id="transit-table"></div>
           </div>
         </div>
-        <h2>Bhinnashtakavarga per planet</h2>
-        <div class="tbl" id="akv-table"></div>
-        <p class="hint">Per planet: 5 or more is strong, 4 average, 3 or less weak. Underlined: the planet's natal sign.</p>
-      </div>
-
-      <div class="panel" data-panel="varsha" hidden>
-        <div class="toolbar">
-          <label class="inline">Year
-            <span class="row">
-              <button type="button" id="vy-prev" aria-label="Previous year">‹</button>
-              <input id="vy" type="number" inputmode="numeric" step="1">
-              <button type="button" id="vy-next" aria-label="Next year">›</button>
-            </span>
-          </label>
+        <div class="sub" data-subpanel="varsha" hidden>
+          <div class="toolbar">
+            <label class="inline">Year
+              <span class="row">
+                <button type="button" id="vy-prev" aria-label="Previous year">‹</button>
+                <input id="vy" type="number" inputmode="numeric" step="1">
+                <button type="button" id="vy-next" aria-label="Next year">›</button>
+              </span>
+            </label>
+          </div>
+          <div class="kv" id="varsha-kv"></div>
+          <div class="split" style="margin-top:1rem">
+            <div class="chart-box" id="varsha-box"></div>
+            <div class="tbl" id="varsha-table"></div>
+          </div>
+          <p class="hint">Annual chart (Tajika) cast for the moment the Sun returns to its natal sidereal position, at the birthplace. Muntha moves one sign per year from the natal Lagna.</p>
         </div>
-        <div class="kv" id="varsha-kv"></div>
-        <div class="split" style="margin-top:1rem">
-          <div class="chart-box" id="varsha-box"></div>
-          <div class="tbl" id="varsha-table"></div>
+        <div class="sub" data-subpanel="panchang" hidden>
+          <div class="kv" id="panchang"></div>
+          <p class="hint">The Vedic day (vara) runs from sunrise to sunrise, so a birth before sunrise counts to the previous weekday.</p>
         </div>
-        <p class="hint">Annual chart (Tajika) cast for the moment the Sun returns to its natal sidereal position, at the birthplace. Muntha moves one sign per year from the natal Lagna.</p>
-      </div>
-
-      <div class="panel" data-panel="dasha" hidden>
-        <p class="now" id="dasha-now"></p>
-        <div id="dasha-tree"></div>
-      </div>
-
-      <div class="panel" data-panel="transits" hidden>
-        <p class="hint" id="transit-when"></p>
-        <div class="split">
-          <div class="chart-box" id="transit-box"></div>
-          <div class="tbl" id="transit-table"></div>
+        <div class="sub" data-subpanel="muhurta" hidden>
+          <div class="grid">
+            <label>Activity<select id="muh-act"></select></label>
+            <label>Months ahead<select id="muh-months"><option>1</option><option>3</option><option selected>6</option><option>12</option></select></label>
+            <label>Show<select id="muh-min"><option value="3">Excellent only</option><option value="2" selected>Excellent and good</option><option value="1">Fair and up</option><option value="-99">All matches</option></select></label>
+          </div>
+          <p class="hint" id="muh-naks"></p>
+          <h2>This month</h2>
+          <div class="tbl" id="muh-grid"></div>
+          <h2>Favourable windows</h2>
+          <div class="tbl" id="muh-rows"></div>
+          <p class="hint">Computed for the chart's place. Each window is when the favourable nakshatra is active that day (local time); tithi, yoga and karana are taken near sunrise. Rikta tithis, Amavasya, Vishti karana and malefic yogas lower the rating. A study aid, not a final muhurta.</p>
+        </div>
+        <div class="sub" data-subpanel="eclipses" hidden>
+          <div class="toolbar">
+            <label class="inline">Year
+              <span class="row">
+                <button type="button" id="ey-prev" aria-label="Previous year">‹</button>
+                <input id="ey" type="number" inputmode="numeric" step="1">
+                <button type="button" id="ey-next" aria-label="Next year">›</button>
+              </span>
+            </label>
+          </div>
+          <div class="tbl" id="eclipses"></div>
+          <p class="hint">Sidereal (Lahiri) position of the eclipsed light: the Sun for solar, the Moon for lunar eclipses. <b>Hits</b> lists natal points within 3°. Visibility is for Switzerland.</p>
         </div>
       </div>
 
-      <div class="panel" data-panel="panchang" hidden>
-        <div class="kv" id="panchang"></div>
-        <p class="hint">The Vedic day (vara) runs from sunrise to sunrise, so a birth before sunrise counts to the previous weekday.</p>
+      <!-- Strength: ashtakavarga · shad bala -->
+      <div class="panel" data-panel="strength" hidden>
+        <nav class="subtabs"><button data-sub="akv" aria-pressed="true">Ashtakavarga</button><button data-sub="shadbala">Shad Bala</button></nav>
+        <div class="sub" data-subpanel="akv">
+          <div class="split">
+            <div class="chart-box" id="akv-box"></div>
+            <div>
+              <p class="hint">Sarvashtakavarga: total points per sign. 30 or more is strong, 26 to 29 average, 25 or less weak (the average is 28).</p>
+              <div class="tbl" id="akv-transit"></div>
+            </div>
+          </div>
+          <h2>Bhinnashtakavarga per planet</h2>
+          <div class="tbl" id="akv-table"></div>
+          <p class="hint">Per planet: 5 or more is strong, 4 average, 3 or less weak. Underlined: the planet's natal sign.</p>
+        </div>
+        <div class="sub" data-subpanel="shadbala" hidden>
+          <p class="hint">Six-fold strength in rupas (1 rupa = 60 virupas). A planet is strong when it reaches its classical minimum (the marker on each bar).</p>
+          <div id="sb-bars"></div>
+          <div class="tbl" id="sb-table"></div>
+          <h2>Bhava Bala: house strengths</h2>
+          <div id="bb-bars"></div>
+          <p class="hint">Per house: the lord's Shad Bala plus the house's directional and aspect strength. Cheshta and parts of Kala bala are approximated.</p>
+        </div>
+      </div>
+
+      <!-- More: match · medizin · fixsterne · upayas -->
+      <div class="panel" data-panel="more" hidden>
+        <nav class="subtabs">
+          <button data-sub="match" aria-pressed="true">Compatibility</button><button data-sub="medical">Medizin</button><button data-sub="fixstars">Fixsterne</button><button data-sub="remedies">Upāyas</button>
+        </nav>
+        <div class="sub" data-subpanel="match">
+          <p class="hint">Ashtakoota (Guna Milan): the classical 36-point Moon match between this chart and a partner.</p>
+          <form id="match-form" class="card" autocomplete="off">
+            <div class="grid">
+              <label>Partner name<input name="name" placeholder="optional"></label>
+              <label>Birth date<input name="date" type="date" required min="1800-01-01" max="2100-12-31" value="1990-01-01"></label>
+              <label>Birth time<input name="time" type="time" value="12:00" required></label>
+              <label>Who is male?
+                <select name="male"><option value="a">This chart</option><option value="b">Partner</option><option value="unknown">Unknown</option></select>
+              </label>
+            </div>
+            <label class="place">Partner birthplace
+              <input name="city" placeholder="e.g. Mumbai, India" required>
+            </label>
+            <button class="primary" type="submit">Check compatibility</button>
+            <p class="error" id="match-error" hidden></p>
+          </form>
+          <div id="match-result"></div>
+        </div>
+        <div class="sub svc" data-subpanel="medical" hidden><p class="hint">Loading…</p></div>
+        <div class="sub svc" data-subpanel="fixstars" hidden><p class="hint">Loading…</p></div>
+        <div class="sub svc" data-subpanel="remedies" hidden><p class="hint">Loading…</p></div>
       </div>
     </section>
   </main>
@@ -153,6 +254,18 @@
     <p class="hint">Stored in this browser on this device.</p>
     <ul id="saved-list"></ul>
     <form method="dialog"><button class="primary">Close</button></form>
+  </dialog>
+
+  <dialog id="prashna-dlg">
+    <h2>Prashna</h2>
+    <p class="hint">A chart for the moment a question is asked, at your current location.</p>
+    <form id="prashna-form" autocomplete="off">
+      <label>Your question (optional)<input name="q" placeholder="e.g. Will the journey go well?"></label>
+      <label class="place">Where you are now<input name="city" placeholder="e.g. Zürich, Switzerland" required></label>
+      <button class="primary" type="submit">Cast for this moment</button>
+      <p class="error" id="prashna-error" hidden></p>
+    </form>
+    <form method="dialog"><button class="ghost" style="width:100%">Cancel</button></form>
   </dialog>
 
   <footer>Lahiri ayanamsha · whole-sign houses · Swiss Ephemeris. For study and reflection.</footer>
