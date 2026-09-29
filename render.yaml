@@ -1,0 +1,7 @@
+# One-click deploy on Render (render.com → New → Blueprint → pick this repo).
+services:
+  - type: web
+    name: jyotisa
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/health

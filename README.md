@@ -16,6 +16,19 @@ Arudha Lagna, and Chara Dasha with Chara Bala). Includes **PDF export** and
 Everything except the math lives in `streamlit_app.py`, so updating the app is
 just replacing those files — no extra modules to keep in sync.
 
+## New standalone web app (in progress)
+A browser app that works on phone and laptop and can be installed on the home
+screen. It uses the same `astro_engine.py`; only the interface is new.
+
+    pip install -r web/requirements.txt
+    uvicorn web.server:app --reload        # then open http://localhost:8000
+
+    web/server.py      # JSON API around astro_engine (/api/chart, /api/place)
+    web/static/        # the app itself: index.html, app.js, style.css
+
+Deploy: the `Dockerfile` runs anywhere; `render.yaml` sets it up on Render's
+free plan (New → Blueprint → this repo). Tests: `pytest -q`.
+
 ## Run locally
     pip install -r requirements.txt
     streamlit run streamlit_app.py

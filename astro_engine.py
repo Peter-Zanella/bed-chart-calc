@@ -211,7 +211,10 @@ def _swe_asc(jd:float, lat:float, lon:float) -> float:
     return norm(swe.houses_ex(jd, lat, lon, b"W", swe.FLG_SIDEREAL)[1][0])
 
 def _swe_ayan(jd:float) -> float:
-    return swe.get_ayanamsa_ex_ut(jd, swe.SIDM_LAHIRI)[0]
+    # get_ayanamsa_ex_ut returns (retflag, value) and takes flags, not a sid mode —
+    # indexing [0] gave the flag (1), so the ayanamsha read as "1°". The Lahiri
+    # mode is set by the caller (compute_positions) right before this.
+    return swe.get_ayanamsa_ut(jd)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -979,9 +982,14 @@ def compute_varshaphala(birth_year:int, birth_month:int, birth_day:int,
     age      = target_year - birth_year
     mun_si   = (natal_lagna_si + age) % 12
 
-    wd_lord  = _WEEKDAY_LORDS[int(jd_sr+1.5)%7]
-    hl_start = _HORA_ORDER.index(_WEEKDAY_LORDS[int(jd_sr+1.5)%7])
-    hr_lord  = _HORA_ORDER[(hl_start + int((jd_sr+0.5)%1*24)) % 7]
+    _vd = vedic_day(jd_sr, lat, lon)
+    if _vd:
+        wd_lord  = _WEEKDAY_LORDS[_vd[0]]
+        hr_lord  = _HORA_ORDER[(_HORA_ORDER.index(wd_lord) + int(_vd[1])) % 7]
+    else:
+        wd_lord  = _WEEKDAY_LORDS[int(jd_sr+1.5)%7]
+        hl_start = _HORA_ORDER.index(wd_lord)
+        hr_lord  = _HORA_ORDER[(hl_start + int((jd_sr+0.5)%1*24)) % 7]
     candidates = [wd_lord, hr_lord, lagna_lord]
     # max over the list, not a set: on a tie the first candidate wins every run,
     # instead of whichever the hash seed puts first.
@@ -1502,6 +1510,23 @@ def _sun_rise_set(jd_ut: float, lat: float, lon: float, kind: int) -> Optional[f
         return tret[0] if res == 0 else None
     except Exception:
         return None
+
+
+def vedic_day(jd_ut: float, lat: float, lon: float) -> Optional[Tuple[int, float]]:
+    """Vedic weekday (0=Sun … 6=Sat) and hours elapsed since the sunrise that began it.
+
+    The Vedic day (vara) runs sunrise to sunrise, so a birth before sunrise belongs
+    to the previous weekday. The weekday is the local calendar day of that sunrise
+    (local mean time from the longitude is enough to date it). None without Swiss
+    Ephemeris or when the Sun does not rise (polar day/night)."""
+    sr = _sun_rise_set(jd_ut - 1.0, lat, lon, swe.CALC_RISE) if _SWE else None
+    if sr is None:
+        return None
+    if sr > jd_ut:                       # day longer than 24 h: take the earlier rise
+        sr = _sun_rise_set(jd_ut - 1.5, lat, lon, swe.CALC_RISE)
+        if sr is None or sr > jd_ut:
+            return None
+    return int(sr + lon / 360.0 + 1.5) % 7, (jd_ut - sr) * 24.0
 
 
 def compute_upagrahas(jd: float, lat: float, lon: float,
@@ -2171,7 +2196,7 @@ def _sb_saptavarga(p, lon_p, rashi, own):
 
 
 def compute_shadbala(planets, lagna_idx, asc_lon, sun_lon, moon_lon, ayan,
-                     hour_local, weekday_idx) -> Dict:
+                     hour_local, weekday_idx, hours_since_sunrise=None) -> Dict:
     rashi = {p: planets[p]["sign_idx"] for p in _SB}
     lon = {p: planets[p]["lon"] for p in _SB}
     house = {p: planets[p]["house"] for p in _SB}
@@ -2184,7 +2209,9 @@ def compute_shadbala(planets, lagna_idx, asc_lon, sun_lon, moon_lon, ayan,
     else:
         trib_lord = ["Moon", "Venus", "Mars"][min(int(((h - 18) % 24) // 4), 2)]
     start = _HORA_ORDER.index(vara_lord) if vara_lord in _HORA_ORDER else 0
-    hora_lord = _HORA_ORDER[(start + int((h - 6) % 24)) % 7]
+    # horas count from the actual sunrise when known (else a 06:00 sunrise is assumed)
+    since = hours_since_sunrise if hours_since_sunrise is not None else (h - 6) % 24
+    hora_lord = _HORA_ORDER[(start + int(since)) % 7]
     dayval = (12 - abs(h - 12)) / 12.0 * 60.0
 
     res = {}
@@ -2398,7 +2425,10 @@ def generate_chart(year:int, month:int, day:int, hour:int, minute:int,
     chara_dasha_alt = build_chara_dasha(_chara_ps, lons, lagna_idx, _chara_bd,
                                         seq_pada=False, dur_pada=False)
 
-    panchang = compute_panchang(lons["Sun"], lons["Moon"], local_dt.isoweekday() % 7,
+    # Vara runs sunrise to sunrise; fall back to the calendar day without a sunrise
+    _vd = vedic_day(jd, lat, lon)
+    weekday_idx = _vd[0] if _vd else local_dt.isoweekday() % 7
+    panchang = compute_panchang(lons["Sun"], lons["Moon"], weekday_idx,
                                 planets["Moon"]["nakshatra"], planets["Moon"]["nak_lord"])
     # Upagrahas (Schattenplaneten) — Anzeige im Planeten-Tab; Häuser vom Lagna
     try:
@@ -2436,7 +2466,8 @@ def generate_chart(year:int, month:int, day:int, hour:int, minute:int,
                           "detail": f"In the {_vlabel} chart: {_e}."})
 
     shadbala = compute_shadbala(planets, lagna_idx, asc_lon, lons["Sun"], lons["Moon"],
-                                ayan, hour + minute / 60.0, local_dt.isoweekday() % 7)
+                                ayan, hour + minute / 60.0, weekday_idx,
+                                _vd[1] if _vd else None)
     bhavabala = compute_bhavabala(planets, lagna_idx, asc_lon, shadbala)
 
     ah,am = int(abs(tz_offset)), int(round((abs(tz_offset)%1)*60))
