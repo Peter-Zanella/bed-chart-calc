@@ -19,7 +19,7 @@ const esc = s => String(s ?? "").replace(/[&<>"']/g, c =>
 const dmy = iso => { const [y, m, d] = iso.slice(0, 10).split("-"); return `${d}.${m}.${y}`; };
 const deg = pos => pos.split("°")[0];          // "7° 48'" -> "7"
 
-const state = { chart: null, params: null, style: "south", div: "d1", tab: "chart" };
+const state = { chart: null, params: null, style: "south", div: "d1", tab: "chart", loaded: {} };
 const form = $("#form");
 
 // ── prefs (per device) ──────────────────────────────────────────────────────
@@ -49,17 +49,27 @@ function readForm() {
            location: f.location.value.trim(), city: f.city.value.trim() };
 }
 
+async function lookupPlace(q, date, time) {
+  const r = await fetch(`api/place?q=${encodeURIComponent(q)}&date=${date}&time=${time}`);
+  if (!r.ok) throw new Error(r.status === 404 ? "Place not found. Check the spelling or enter coordinates." : "Lookup failed.");
+  return r.json();
+}
+async function postJSON(url, body) {
+  const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" },
+                               body: JSON.stringify(body) });
+  if (!r.ok) throw new Error("The server could not calculate this.");
+  return r;
+}
+const chartBody = p => ({ date: p.date, time: p.time, lat: p.lat, lon: p.lon, tz: p.tz,
+                          location: p.location || "", name: p.name || "", gender: p.gender || "" });
+
 async function findPlace() {
   const f = form.elements, info = $("#place-info");
   const q = f.city.value.trim();
   if (q.length < 2) return false;
   info.className = "hint"; info.textContent = "Looking up…";
-  const url = `api/place?q=${encodeURIComponent(q)}&date=${f.date.value || DEFAULT.date}` +
-              `&time=${f.time.value || "12:00"}`;
   try {
-    const r = await fetch(url);
-    if (!r.ok) throw new Error(r.status === 404 ? "Place not found. Check the spelling or enter coordinates." : "Lookup failed.");
-    const g = await r.json();
+    const g = await lookupPlace(q, f.date.value || DEFAULT.date, f.time.value || "12:00");
     f.lat.value = g.lat.toFixed(4); f.lon.value = g.lon.toFixed(4); f.tz.value = g.offset;
     f.location.value = g.label;
     info.className = "hint ok";
@@ -100,12 +110,8 @@ form.addEventListener("submit", async e => {
 async function calculate(p, { push = true } = {}) {
   const btn = $("#btn-calc"); btn.disabled = true; btn.textContent = "Calculating…";
   try {
-    const r = await fetch("api/chart", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ date: p.date, time: p.time, lat: p.lat, lon: p.lon, tz: p.tz,
-                             location: p.location, name: p.name, gender: p.gender }) });
-    if (!r.ok) throw new Error("The server could not calculate this chart.");
-    state.chart = await r.json(); state.params = p;
+    const r = await postJSON("api/chart", chartBody(p));
+    state.chart = await r.json(); state.params = p; state.loaded = {}; state.match = null;
     if (push) history.replaceState(null, "", "#" + toHash(p));
     render();
   } catch (e) {
@@ -142,9 +148,14 @@ function render() {
     ["Dasha", [cur.maha, cur.antar, cur.pratyantar].filter(Boolean).join(" › ") || "—"],
   ];
   $("#chips").innerHTML = chips.map(([k, v]) => `<span class="chip">${k} <b>${esc(v)}</b></span>`).join("");
+  $("#s-question").hidden = !p.question;
+  $("#s-question").textContent = p.question ? `Question: ${p.question}` : "";
   document.title = `${p.name || "Chart"} · Vedic Birth Chart`;
   state.varsha = c.varshaphala;
-  renderChartTab(); renderPlanets(); renderAkv(); renderVarsha(); renderDasha(); renderTransits(); renderPanchang();
+  $("#match-result").innerHTML = "";
+  $$(".sub.svc").forEach(el => { el.innerHTML = `<p class="hint">Loading…</p>`; });
+  renderChartTab(); renderPlanets(); renderYogas(); renderAkv(); renderVarsha(); renderDasha();
+  renderJaimini(); renderTransits(); renderPanchang(); renderShadbala();
   showTab(state.tab);
 }
 
@@ -168,7 +179,8 @@ function renderChartTab() {
   const place = dv === "d1" ? Object.fromEntries(Object.entries(pl).map(([n, r]) => [n, r.sign_idx]))
                             : { ...c[dv], Ascendant: c[dv + "_lagna"] };
   const lagna = dv === "d1" ? c.lagna_idx : c[dv + "_lagna"];
-  const title = { d1: "Rasi D1", d9: "Navamsa D9", d10: "Dasamsha D10", d3: "Drekkana D3" }[dv];
+  const title = { d1: "Rasi D1", d9: "Navamsa D9", d10: "Dasamsha D10", d3: "Drekkana D3",
+                  d4: "Chaturthamsha D4" }[dv];
   $("#chart-box").innerHTML = chartSvg(items(place, pl), lagna, title, state.params.name || "");
   $("#chart-side").innerHTML = dv === "d1" ? planetTable(true)
     : `<p class="hint">${title}: each graha's sign in this division. Degrees are shown in the D1 chart.</p>`;
@@ -245,6 +257,7 @@ function planetTable(compact) {
 function renderPlanets() {
   const c = state.chart;
   $("#planets").innerHTML = planetTable(false);
+  renderUpagrahas();
   const rows = [];
   for (let h = 1; h <= 12; h++) {
     const sign = c.houses[h], si = SIGNS.indexOf(sign);
@@ -340,6 +353,273 @@ $("#vy").addEventListener("change", e => loadVarsha(+e.target.value));
 $("#vy-prev").addEventListener("click", () => loadVarsha(state.varsha.target_year - 1));
 $("#vy-next").addEventListener("click", () => loadVarsha(state.varsha.target_year + 1));
 
+// ── Yogas, upagrahas ────────────────────────────────────────────────────────
+function renderYogas() {
+  const ys = state.chart.yogas || [];
+  const order = ["Pancha Mahapurusha", "Raja", "Dhana", "Vipareeta Raja", "Sun", "Moon", "Varga", "Other"];
+  const rank = g => { const i = order.indexOf(g); return i < 0 ? 99 : i; };
+  const groups = [...new Set(ys.map(y => y.group))].sort((a, b) => rank(a) - rank(b));
+  $("#yogas").innerHTML = !ys.length ? `<p class="muted">None of the checked yogas are present.</p>` :
+    `<p><b>${ys.length}</b> yogas found</p>` + groups.map(g =>
+      `<h2>${esc(g)}</h2><ul class="list">` + ys.filter(y => y.group === g).map(y =>
+        `<li><b>${esc(y.name)}</b> <span class="muted">${esc(y.planets.join(", "))}</span><br>${esc(y.detail)}</li>`).join("") +
+      `</ul>`).join("");
+}
+
+function renderUpagrahas() {
+  const c = state.chart, rows = [];
+  for (const [n, r] of Object.entries(c.upagrahas || {}))
+    rows.push(`<tr><td>${esc(r.name || n)}</td><td>${r.sign}</td><td class="num">${r.pos}</td>` +
+              `<td>${r.nakshatra} ${r.pada}</td><td class="num">${r.house}</td></tr>`);
+  for (const [n, r] of Object.entries(c.outer_planets || {}))
+    rows.push(`<tr><td>${n}${r.retrograde ? ` <span class="r">R</span>` : ""}</td><td>${r.sign}</td>` +
+              `<td class="num">${r.pos}</td><td>${r.nakshatra} ${r.pada}</td><td class="num">${r.house}</td></tr>`);
+  $("#upagrahas").innerHTML = rows.length ? `<table><thead><tr><th>Point</th><th>Sign</th><th>Degree</th>` +
+    `<th>Nakshatra</th><th>House</th></tr></thead><tbody>${rows.join("")}</tbody></table>` : "";
+}
+
+// ── Jaimini ─────────────────────────────────────────────────────────────────
+const KARAKA = { Atmakaraka: ["AK", "soul / self"], Amatyakaraka: ["AmK", "career / advisor"],
+  Bhratrikaraka: ["BK", "siblings"], Matrikaraka: ["MK", "mother"], Pitrikaraka: ["PiK", "father"],
+  Putrakaraka: ["PuK", "children"], Gnatikaraka: ["GK", "cousins / obstacles"], Darakaraka: ["DK", "spouse"] };
+
+function renderJaimini() {
+  const c = state.chart, j = c.jaimini, cd = c.chara_dasha;
+  const kv = [["Atmakaraka", j.atmakaraka, "soul"], ["Darakaraka", j.darakaraka, "spouse"],
+              ["Karakamsha", j.karakamsha, `lord ${j.karakamsha_lord}`],
+              ["Arudha Lagna", j.arudha_lagna, `lord ${j.arudha_lagna_lord}`],
+              ["Upapada Lagna", j.upapada_lagna, `lord ${j.upapada_lagna_lord}`]];
+  $("#jaimini-kv").innerHTML = kv.map(([k, v, n]) => `<div><small>${k}</small><b>${esc(v)}</b><small>${esc(n)}</small></div>`).join("");
+  const place = Object.fromEntries(PLANETS.map(n => [n, c.planets[n].sign_idx]));
+  const by = items(place, c.planets);
+  by[j.arudha_lagna_si].push({ n: "AL", txt: "AL", deg: "", cls: "asc" });
+  by[j.upapada_lagna_si].push({ n: "UL", txt: "UL", deg: "", cls: "asc" });
+  const prev = state.div; state.div = "d1";
+  $("#jaimini-box").innerHTML = chartSvg(by, c.lagna_idx, "Rasi + AL / UL", "");
+  state.div = prev;
+  $("#jaimini-table").innerHTML = `<table><thead><tr><th>Karaka</th><th>Planet</th><th>Degree in sign</th></tr></thead><tbody>` +
+    j.order.map(r => { const k = j.karakas[r];
+      return `<tr><td>${KARAKA[r][0]} · ${r}<br><small class="muted">${KARAKA[r][1]}</small></td><td>${k.planet}</td>` +
+        `<td class="num">${k.deg_in_sign.toFixed(2)}°${k.reverse ? ` <small class="muted">(30° − deg: ${k.effective.toFixed(2)}°)</small>` : ""}</td></tr>`;
+    }).join("") + `</tbody></table><p class="hint">8-karaka scheme; Rahu is counted in reverse (30° minus its degree).</p>`;
+
+  $("#chara-note").textContent = `Starts at the Lagna sign; direction ${cd.direction}.` +
+    (Object.keys(cd.colords || {}).length ? " Dual-lord signs: " + Object.entries(cd.colords)
+      .map(([s, v]) => `${s} → ${v.lord} (${v.reason})`).join("; ") + "." : "");
+  const act = cd.mahadashas.find(m => m.active), aad = act?.antardashas.find(a => a.active);
+  $("#chara-now").innerHTML = act ? `Now: <b>${act.sign}</b>${aad ? ` › <b>${aad.sign}</b>` : ""}` +
+    (aad ? ` <span class="muted">until ${dmy(aad.end)}</span>` : "") : "No running period found.";
+  const span = x => `<span class="d">${dmy(x.start)} – ${dmy(x.end)}</span>`;
+  $("#chara-tree").innerHTML = `<div class="dasha">` + cd.mahadashas.slice(0, 12).map(m =>
+    `<details class="${m.active ? "active" : ""}" ${m.active ? "open" : ""}><summary><span>${m.sign} ` +
+    `<small class="muted">${m.years} y</small></span>${span(m)}</summary><div class="lvl3">` +
+    m.antardashas.map(a => `<div class="${a.active ? "active" : ""}"><span>${m.sign} / ${a.sign}</span>${span(a)}</div>`).join("") +
+    `</div></details>`).join("") + `</div>`;
+}
+
+// ── Shad Bala ───────────────────────────────────────────────────────────────
+function bars(rows, max) {
+  // rows: [label, value, required|null, note]
+  return `<div class="bars">` + rows.map(([l, v, req, note]) => {
+    const ok = req == null || v >= req;
+    return `<div class="bar"><span class="bl">${l}</span><span class="bt"><span class="bf ${ok ? "ok" : "low"}" ` +
+      `style="width:${Math.min(100, v / max * 100)}%"></span>` +
+      (req != null ? `<span class="bm" style="left:${req / max * 100}%" title="required ${req}"></span>` : "") +
+      `</span><span class="bv">${v.toFixed(2)}${note ? ` <small class="muted">${note}</small>` : ""}</span></div>`;
+  }).join("") + `</div>`;
+}
+
+function renderShadbala() {
+  const sb = state.chart.shadbala, bb = state.chart.bhavabala;
+  if (!sb) return;
+  const P = sb.planets, order = sb.order;
+  const max = Math.max(...order.map(p => Math.max(P[p].rupa, P[p].required))) * 1.05;
+  $("#sb-bars").innerHTML = bars(order.map(p => [p, P[p].rupa, P[p].required,
+                                                 `${Math.round(P[p].ratio * 100)}%`]), max);
+  $("#sb-table").innerHTML = `<table><thead><tr><th>Planet</th><th>Sthana</th><th>Dig</th><th>Kala</th>` +
+    `<th>Cheshta</th><th>Naisargika</th><th>Drik</th><th>Total</th><th>Ishta</th><th>Kashta</th></tr></thead><tbody>` +
+    order.map(p => { const x = P[p];
+      return `<tr><td>${p}</td>${[x.sthana, x.dig, x.kala, x.cheshta, x.naisargika, x.drik, x.total, x.ishta, x.kashta]
+        .map(v => `<td class="num">${v ?? "—"}</td>`).join("")}</tr>`; }).join("") +
+    `</tbody></table><p class="hint">Values in virupas. Ishta = benefic yield, Kashta = difficult yield (0 to 60).</p>`;
+  if (bb) {
+    const H = bb.houses, hmax = Math.max(...Object.values(H).map(h => h.rupa)) * 1.05;
+    $("#bb-bars").innerHTML = bars(Array.from({ length: 12 }, (_, i) => {
+      const h = H[i + 1]; return [`H${i + 1} ${SIGN_ABR[SIGNS.indexOf(h.sign)]}`, h.rupa, null, h.lord]; }), hmax);
+  }
+}
+
+// ── German sections from astro-report-service ───────────────────────────────
+async function loadSection(name) {
+  const el = $(`.sub[data-subpanel="${name}"]`);
+  try {
+    const r = await postJSON(`api/section/${name}`, chartBody(state.params));
+    el.innerHTML = (await r.json()).html.replaceAll("rgba(255,255,255,.14)", "var(--line)");
+  } catch (e) {
+    state.loaded[name] = false;
+    el.innerHTML = `<p class="error">${esc(e.message)}</p>`;
+  }
+}
+
+// ── Muhurta ─────────────────────────────────────────────────────────────────
+const MUH_COL = { good: "good", mix: "avg", fair: "avg", bad: "weak", excellent: "good" };
+async function loadMuhurta() {
+  const sel = $("#muh-act");
+  if (!sel.options.length) {
+    try {
+      state.activities = await (await fetch("api/muhurta/activities")).json();
+      sel.innerHTML = Object.keys(state.activities).map(a => `<option>${esc(a)}</option>`).join("");
+      sel.value = pref("muh_act") || sel.options[0].value;
+    } catch { state.loaded.muhurta = false; return; }
+  }
+  const act = sel.value, p = state.params, months = +$("#muh-months").value, min = +$("#muh-min").value;
+  $("#muh-naks").textContent = `Favourable nakshatras for ${act}: ${state.activities[act].join(", ")}.`;
+  $("#muh-rows").innerHTML = `<p class="hint">Calculating…</p>`;
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const d = await (await postJSON("api/muhurta", { activity: act, lat: p.lat, lon: p.lon, tz: p.tz,
+                                                     start: today, days: months * 31 })).json();
+    const g = d.grid, rowsDef = [["Nakshatra", "nak", "nak_label"], ["Weekday", "vara", "weekday"],
+      ["Tithi", "tithi", "tithi_label"], ["Yoga", "yoga", "yoga_label"], ["Karana", "karana", "karana_label"],
+      ["Overall", "overall", null]];
+    $("#muh-grid").innerHTML = `<table class="heat"><tr><td></td>${g.map(r => `<th>${r.wd}<br>${r.dom}</th>`).join("")}</tr>` +
+      rowsDef.map(([n, k, lab]) => `<tr><td>${n}</td>` + g.map(r =>
+        `<td class="h ${MUH_COL[r[k]] || ""}" title="${esc(lab ? r[lab] : r.overall)}">` +
+        (k === "overall" ? ({ excellent: "E", good: "G", fair: "F", bad: "✗" }[r[k]] || "") : "") + `</td>`).join("") +
+        `</tr>`).join("") + `</table>`;
+    const rows = d.rows.filter(r => r.score >= min);
+    $("#muh-rows").innerHTML = !rows.length ? `<p class="muted">No matching windows. Try more months or a lower filter.</p>` :
+      `<table><thead><tr><th>Date</th><th>Window</th><th>Nakshatra</th><th>Tithi</th><th>Rating</th><th>Caveats</th></tr></thead><tbody>` +
+      rows.map(r => `<tr><td>${dmy(r.date)} <small class="muted">${r.weekday.slice(0, 3)}</small></td><td>${esc(r.window)}</td>` +
+        `<td>${esc(r.nakshatra)}</td><td>${esc(r.tithi)}</td><td class="${r.score >= 3 ? "good" : r.score >= 2 ? "" : "avg"}">${esc(r.rating)}</td>` +
+        `<td class="muted">${esc(r.flags)}</td></tr>`).join("") + `</tbody></table>`;
+  } catch (e) {
+    state.loaded.muhurta = false;
+    $("#muh-rows").innerHTML = `<p class="error">${esc(e.message)}</p>`;
+  }
+}
+["#muh-act", "#muh-months", "#muh-min"].forEach(id => $(id).addEventListener("change", () => {
+  pref("muh_act", $("#muh-act").value); loadMuhurta();
+}));
+
+// ── Eclipses ────────────────────────────────────────────────────────────────
+async function loadEclipses(year) {
+  year = year || state.eclipseYear || new Date().getFullYear();
+  const input = $("#ey");
+  try {
+    const d = await (await fetch(`api/eclipses?start=${year}&end=${year}`)).json();
+    year = Math.max(d.range[0], Math.min(d.range[1], year));
+    state.eclipseYear = year; input.value = year; input.min = d.range[0]; input.max = d.range[1];
+    const list = d.years[year] || [];
+    const natal = Object.entries(state.chart.lons);
+    $("#eclipses").innerHTML = !list.length ? `<p class="muted">No eclipses in ${year}.</p>` :
+      `<table><thead><tr><th>Date</th><th>Kind</th><th>Position</th><th>Nakshatra</th><th>Hits</th><th>Visible</th></tr></thead><tbody>` +
+      list.map(e => {
+        const hits = natal.filter(([, l]) => Math.abs(((e.lon - l + 540) % 360) - 180) <= 3)
+          .map(([n]) => n === "Ascendant" ? "Lagna" : n);
+        return `<tr><td>${String(e.day).padStart(2, "0")}.${String(e.month).padStart(2, "0")}.${e.year} ` +
+          `<small class="muted">${e.time_ut || ""} UT</small></td><td>${e.kind === "solar" ? "☀ Solar" : "☾ Lunar"}<br>` +
+          `<small class="muted">${esc(e.type || "")}</small></td><td>${esc(e.sign)} ${esc(e.deg_str)}</td>` +
+          `<td>${esc(e.nakshatra)} ${e.pada}</td><td class="${hits.length ? "weak" : "muted"}">${hits.join(", ") || "—"}</td>` +
+          `<td>${e.visible_wadenswil ? "yes" : "no"}</td></tr>`;
+      }).join("") + `</tbody></table>`;
+  } catch {
+    state.loaded.eclipses = false;
+    $("#eclipses").innerHTML = `<p class="error">Could not load the eclipse list.</p>`;
+  }
+}
+$("#ey").addEventListener("change", e => loadEclipses(+e.target.value));
+$("#ey-prev").addEventListener("click", () => loadEclipses(state.eclipseYear - 1));
+$("#ey-next").addEventListener("click", () => loadEclipses(state.eclipseYear + 1));
+
+// ── Compatibility ───────────────────────────────────────────────────────────
+$("#match-form").addEventListener("submit", async e => {
+  e.preventDefault();
+  const f = e.target.elements, err = $("#match-error"), btn = $("button[type=submit]", e.target);
+  err.hidden = true; btn.disabled = true; btn.textContent = "Checking…";
+  try {
+    const g = await lookupPlace(f.city.value.trim(), f.date.value, f.time.value || "12:00");
+    const partner = { date: f.date.value, time: f.time.value || "12:00", lat: g.lat, lon: g.lon, tz: g.offset,
+                      location: g.label, name: f.name.value.trim() || "Partner" };
+    const v = await (await postJSON("api/compat", { a: chartBody(state.params), b: chartBody(partner),
+                                                   male: f.male.value })).json();
+    state.match = { partner, male: f.male.value };
+    renderMatch(v);
+  } catch (ex) {
+    err.textContent = ex.message; err.hidden = false;
+  } finally {
+    btn.disabled = false; btn.textContent = "Check compatibility";
+  }
+});
+
+function renderMatch(v) {
+  const cls = { exc: "good", good: "good", ok: "avg" }[v.verdict_class] || "weak";
+  const dosh = v.doshas.map(d => `<li class="${d.active ? "weak" : "muted"}"><b>${esc(d.name)} dosha</b> ` +
+    `${d.active ? "present" : "present but cancelled"}: ${esc(d.reason)}</li>`).join("");
+  const ma = v.mangal_a, mb = v.mangal_b;
+  const mang = ma.manglik && mb.manglik ? "Both are Manglik, which traditionally cancels out."
+    : ma.manglik || mb.manglik ? `Only ${esc(ma.manglik ? v.a.name : v.b.name)} is Manglik.` : "Neither partner is Manglik.";
+  $("#match-result").innerHTML =
+    `<p style="margin-top:1rem"><b>${esc(v.a.name)}</b> (Moon ${esc(v.a.moon)}) and <b>${esc(v.b.name)}</b> ` +
+    `(Moon ${esc(v.b.moon)}, ${esc(v.b.loc)})</p>` +
+    `<div class="kv"><div><small>Guna Milan</small><b class="${cls}">${v.total} / ${v.max}</b><small>${esc(v.verdict)} · 18 is the usual minimum</small></div></div>` +
+    `<div class="tbl"><table><thead><tr><th>Kuta</th><th>Score</th><th>Meaning</th></tr></thead><tbody>` +
+    v.kutas.map(k => `<tr><td>${esc(k.name)}</td><td class="num">${k.got} / ${k.max}</td><td class="muted wrap">${esc(k.note)}</td></tr>`).join("") +
+    `</tbody></table></div>` +
+    (dosh ? `<h2>Doshas</h2><ul class="list">${dosh}</ul>` : `<p class="good">No Nadi or Bhakoot dosha.</p>`) +
+    `<h2>Additional factors</h2><ul class="list">` + v.extra.map(x =>
+      `<li><b>${x.ok ? "✓" : "⚠"} ${esc(x.name)}</b>: ${esc(x.verdict)}</li>`).join("") + `</ul>` +
+    `<h2>Mangal dosha</h2><p>${mang}</p><p class="hint">${esc(v.a.name)}: ${esc(ma.note)} · ${esc(v.b.name)}: ${esc(mb.note)}</p>` +
+    `<p class="hint">The PDF now includes this compatibility report.</p>`;
+}
+
+// ── PDF ─────────────────────────────────────────────────────────────────────
+$("#btn-pdf").addEventListener("click", async () => {
+  const b = $("#btn-pdf"); b.disabled = true; b.textContent = "PDF…";
+  try {
+    const body = { chart: chartBody(state.params) };
+    if (state.match) { body.partner = chartBody(state.match.partner); body.male = state.match.male; }
+    const blob = await (await postJSON("api/pdf", body)).blob();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `vedic-chart-${(state.params.name || "chart").replace(/[^\w]+/g, "_")}.pdf`;
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  } catch (e) {
+    alert(e.message);
+  } finally {
+    b.disabled = false; b.textContent = "PDF";
+  }
+});
+
+// ── Prashna ─────────────────────────────────────────────────────────────────
+$("#btn-prashna").addEventListener("click", () => {
+  $("#prashna-error").hidden = true;
+  const f = $("#prashna-form").elements;
+  f.city.value = f.city.value || pref("here") || "";
+  $("#prashna-dlg").showModal();
+});
+$("#prashna-form").addEventListener("submit", async e => {
+  e.preventDefault();
+  const f = e.target.elements, err = $("#prashna-error");
+  err.hidden = true;
+  try {
+    const now = new Date(), iso = now.toISOString();
+    const g = await lookupPlace(f.city.value.trim(), iso.slice(0, 10), iso.slice(11, 16));
+    pref("here", f.city.value.trim());
+    // the moment "now" expressed in the place's local time
+    const local = new Date(now.getTime() + g.offset * 3600e3).toISOString();
+    const p = { date: local.slice(0, 10), time: local.slice(11, 16), lat: g.lat, lon: g.lon, tz: g.offset,
+                location: g.label, city: g.label, name: "Prashna", gender: "", question: f.q.value.trim() };
+    $("#prashna-dlg").close();
+    fillForm(p); form.dataset.placeFor = placeKey();
+    state.tab = "chart";
+    await calculate(p);
+  } catch (ex) {
+    err.textContent = ex.message; err.hidden = false;
+  }
+});
+
 function renderDasha() {
   const d = state.chart.dashas, cur = d.current;
   const act = d.mahadashas.find(m => m.active);
@@ -396,6 +676,26 @@ function showTab(t) {
   state.tab = t;
   $$("#tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === t));
   $$(".panel").forEach(p => { p.hidden = p.dataset.panel !== t; });
+  const panel = $(`.panel[data-panel="${t}"]`), on = panel && $(".subtabs [aria-pressed=true]", panel);
+  if (on) loadSub(on.dataset.sub);
+}
+function showSub(panel, sub) {
+  $$(".subtabs button", panel).forEach(b => b.setAttribute("aria-pressed", b.dataset.sub === sub));
+  $$(".sub", panel).forEach(el => { el.hidden = el.dataset.subpanel !== sub; });
+  loadSub(sub);
+}
+document.addEventListener("click", e => {
+  const b = e.target.closest(".subtabs button");
+  if (b) showSub(b.closest(".panel"), b.dataset.sub);
+});
+// sections that need their own request are fetched the first time they are opened
+function loadSub(sub) {
+  if (!state.chart || state.loaded[sub]) return;
+  const run = { medical: loadSection, fixstars: loadSection, remedies: loadSection,
+                muhurta: loadMuhurta, eclipses: () => loadEclipses() }[sub];
+  if (!run) return;
+  state.loaded[sub] = true;
+  run(sub);
 }
 $("#tabs").addEventListener("click", e => { const b = e.target.closest("button"); if (b) showTab(b.dataset.tab); });
 
@@ -408,7 +708,7 @@ function segment(id, key, after) {
     set(b.dataset.v); pref(key, b.dataset.v); if (state.chart) after();
   });
 }
-segment("#seg-style", "style", () => { renderChartTab(); renderTransits(); renderAkv(); renderVarsha(); });
+segment("#seg-style", "style", () => { renderChartTab(); renderTransits(); renderAkv(); renderVarsha(); renderJaimini(); });
 segment("#seg-div", "div", renderChartTab);
 
 // ── summary actions, saved charts ───────────────────────────────────────────
