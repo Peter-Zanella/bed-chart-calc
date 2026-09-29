@@ -40,4 +40,10 @@ def test_web_api():
     assert body["lagna"] == "Scorpio" and body["dashas"]["current"]["maha"]
     assert cl.post("/api/chart", json={"date": "1957-08-24", "time": "25:00",
                                       "lat": 0, "lon": 0, "tz": 0}).status_code == 422
+    r = cl.post("/api/chart", json={"date": "1957-08-24", "time": "13:55", "lat": 47.4833,
+                                   "lon": 7.7356, "tz": 1, "varsha_year": 2030})
+    v = r.json()["varshaphala"]
+    assert v["target_year"] == 2030 and v["year_number"] == 73
+    assert v["muntha_sign"] == E.SIGNS[(7 + 73) % 12]     # natal Lagna Scorpio + 73 signs
+    assert len(r.json()["ashtakavarga"]["Sarva"]) == 12
     assert cl.get("/").status_code == 200

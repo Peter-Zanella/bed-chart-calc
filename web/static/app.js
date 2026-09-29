@@ -143,7 +143,8 @@ function render() {
   ];
   $("#chips").innerHTML = chips.map(([k, v]) => `<span class="chip">${k} <b>${esc(v)}</b></span>`).join("");
   document.title = `${p.name || "Chart"} · Vedic Birth Chart`;
-  renderChartTab(); renderPlanets(); renderDasha(); renderTransits(); renderPanchang();
+  state.varsha = c.varshaphala;
+  renderChartTab(); renderPlanets(); renderAkv(); renderVarsha(); renderDasha(); renderTransits(); renderPanchang();
   showTab(state.tab);
 }
 
@@ -254,6 +255,91 @@ function renderPlanets() {
     `<tbody>${rows.join("")}</tbody></table>`;
 }
 
+// ── Ashtakavarga ────────────────────────────────────────────────────────────
+const AKV_PLANETS = ["Sun", "Moon", "Mars", "Mercury", "Jupiter", "Venus", "Saturn"];
+const grade = (v, sarva) => v >= (sarva ? 30 : 5) ? "good" : v >= (sarva ? 26 : 4) ? "avg" : "weak";
+
+// a chart grid with one big number per sign (Sarvashtakavarga)
+function numberSvg(values, lagna, title, sub) {
+  const empty = Array.from({ length: 12 }, () => []);
+  let svg = chartSvg(empty, lagna, title, sub).replace("</svg>", "");
+  for (let si = 0; si < 12; si++) {
+    let x, y;
+    if (state.style === "north") { [x, y] = N_TXT[(si - lagna + 12) % 12 + 1]; y += 8; }
+    else { const [cx, cy] = S_POS[si]; x = cx * 100 + 50; y = cy * 100 + 66; }
+    svg += `<text x="${x}" y="${y}" text-anchor="middle" class="c-num ${grade(values[si], true)}">${values[si]}</text>`;
+  }
+  return svg + "</svg>";
+}
+
+function akvTable(akv, natal) {
+  const head = `<tr><th></th>${SIGN_ABR.map(a => `<th>${a}</th>`).join("")}<th>Σ</th></tr>`;
+  const rows = AKV_PLANETS.map(p => `<tr><td>${p}</td>` + akv[p].map((v, si) =>
+      `<td class="${grade(v)}${natal && natal[p] === si ? " nat" : ""}">${v}</td>`).join("") +
+    `<td>${akv[p].reduce((a, b) => a + b, 0)}</td></tr>`).join("");
+  const sarva = `<tr class="total"><td>Sarva</td>` + akv.Sarva.map(v =>
+    `<td class="${grade(v, true)}">${v}</td>`).join("") + `<td>${akv.Sarva.reduce((a, b) => a + b, 0)}</td></tr>`;
+  return `<table class="akv">${head}${rows}${sarva}</table>`;
+}
+
+function renderAkv() {
+  const c = state.chart, akv = c.ashtakavarga, tr = c.transits;
+  $("#akv-box").innerHTML = numberSvg(akv.Sarva, c.lagna_idx, "Sarvashtakavarga", "");
+  const natal = Object.fromEntries(AKV_PLANETS.map(p => [p, c.planets[p].sign_idx]));
+  $("#akv-table").innerHTML = akvTable(akv, natal);
+  const rows = AKV_PLANETS.map(p => {
+    const si = tr[p].sign_idx, b = akv[p][si];
+    return `<tr><td>${p}</td><td>${SIGNS[si]}</td><td class="num">${(si - c.lagna_idx + 12) % 12 + 1}</td>` +
+      `<td class="num ${grade(b)}">${b}</td><td class="num">${akv.Sarva[si]}</td></tr>`;
+  }).join("");
+  $("#akv-transit").innerHTML = `<h2>Transits today</h2><table><thead><tr><th>Planet</th><th>Transit sign</th>` +
+    `<th>House</th><th>Bindus</th><th>Sarva</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+// ── Varshaphala ─────────────────────────────────────────────────────────────
+function renderVarsha() {
+  const v = state.varsha, p = state.params;
+  const vy = $("#vy");
+  vy.value = v.target_year; vy.min = +p.date.slice(0, 4); vy.max = vy.min + 120;
+  const mb = v.ashtakavarga.Sarva[v.muntha_si];
+  const cells = [
+    [`Year ${v.year_number}`, `${v.target_year}–${v.target_year + 1}`, `Solar return ${v.return_dt_utc}`],
+    ["Annual Lagna", `${v.lagna} ${v.lagna_pos}`, `lord ${v.lagna_lord}`],
+    ["Varsha Pati (year lord)", v.varsha_pati, `weekday ${v.weekday_lord} · hora ${v.hora_lord}`],
+    ["Muntha", v.muntha_sign, `lord ${v.muntha_lord} · ${mb} Sarva points (${grade(mb, true) === "good" ? "strong" : grade(mb, true) === "avg" ? "average" : "weak"})`],
+  ];
+  $("#varsha-kv").innerHTML = cells.map(([k, val, n]) =>
+    `<div><small>${k}</small><b>${esc(val)}</b><small>${esc(n)}</small></div>`).join("");
+  const place = Object.fromEntries(Object.entries(v.planets).map(([n, r]) => [n, r.sign_idx]));
+  const prevDiv = state.div; state.div = "d1";        // show degrees
+  $("#varsha-box").innerHTML = chartSvg(items(place, v.planets), v.lagna_si, "Varshaphala", String(v.target_year));
+  state.div = prevDiv;
+  const rows = PLANETS.map(n => {
+    const r = v.planets[n], same = r.sign_idx === state.chart.planets[n].sign_idx;
+    const rt = r.retrograde && !["Rahu", "Ketu"].includes(n) ? ` <span class="r">R</span>` : "";
+    return `<tr><td>${n}${rt}</td><td>${r.sign}</td><td class="num">${r.pos}</td>` +
+      `<td class="num">${(r.sign_idx - v.lagna_si + 12) % 12 + 1}</td><td class="muted">${esc(r.dignity)}</td>` +
+      `<td class="muted">${same ? "natal sign" : ""}</td></tr>`;
+  }).join("");
+  $("#varsha-table").innerHTML = `<table><thead><tr><th>Graha</th><th>Sign</th><th>Degree</th><th>House</th>` +
+    `<th>Dignity</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+async function loadVarsha(year) {
+  const p = state.params, min = +p.date.slice(0, 4);
+  year = Math.max(min, Math.min(min + 120, year | 0));
+  if (!year || year === state.varsha.target_year) { renderVarsha(); return; }
+  try {
+    const r = await fetch("api/chart", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ date: p.date, time: p.time, lat: p.lat, lon: p.lon, tz: p.tz, varsha_year: year }) });
+    if (!r.ok) throw new Error();
+    state.varsha = (await r.json()).varshaphala; renderVarsha();
+  } catch { $("#vy").value = state.varsha.target_year; }
+}
+$("#vy").addEventListener("change", e => loadVarsha(+e.target.value));
+$("#vy-prev").addEventListener("click", () => loadVarsha(state.varsha.target_year - 1));
+$("#vy-next").addEventListener("click", () => loadVarsha(state.varsha.target_year + 1));
+
 function renderDasha() {
   const d = state.chart.dashas, cur = d.current;
   const act = d.mahadashas.find(m => m.active);
@@ -322,7 +408,7 @@ function segment(id, key, after) {
     set(b.dataset.v); pref(key, b.dataset.v); if (state.chart) after();
   });
 }
-segment("#seg-style", "style", () => { renderChartTab(); renderTransits(); });
+segment("#seg-style", "style", () => { renderChartTab(); renderTransits(); renderAkv(); renderVarsha(); });
 segment("#seg-div", "div", renderChartTab);
 
 // ── summary actions, saved charts ───────────────────────────────────────────

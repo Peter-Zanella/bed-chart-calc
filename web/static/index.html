@@ -66,6 +66,8 @@
       <nav class="tabs" role="tablist" id="tabs">
         <button role="tab" data-tab="chart" aria-selected="true">Chart</button>
         <button role="tab" data-tab="planets">Planets</button>
+        <button role="tab" data-tab="akv">Ashtakavarga</button>
+        <button role="tab" data-tab="varsha">Varshaphala</button>
         <button role="tab" data-tab="dasha">Dasha</button>
         <button role="tab" data-tab="transits">Transits</button>
         <button role="tab" data-tab="panchang">Panchang</button>
@@ -93,6 +95,37 @@
       <div class="panel" data-panel="planets" hidden>
         <h2>Planets</h2><div class="tbl" id="planets"></div>
         <h2>Houses</h2><div class="tbl" id="houses"></div>
+      </div>
+
+      <div class="panel" data-panel="akv" hidden>
+        <div class="split">
+          <div class="chart-box" id="akv-box"></div>
+          <div>
+            <p class="hint">Sarvashtakavarga: total points per sign. 30 or more is strong, 26 to 29 average, 25 or less weak (the average is 28).</p>
+            <div class="tbl" id="akv-transit"></div>
+          </div>
+        </div>
+        <h2>Bhinnashtakavarga per planet</h2>
+        <div class="tbl" id="akv-table"></div>
+        <p class="hint">Per planet: 5 or more is strong, 4 average, 3 or less weak. Underlined: the planet's natal sign.</p>
+      </div>
+
+      <div class="panel" data-panel="varsha" hidden>
+        <div class="toolbar">
+          <label class="inline">Year
+            <span class="row">
+              <button type="button" id="vy-prev" aria-label="Previous year">‹</button>
+              <input id="vy" type="number" inputmode="numeric" step="1">
+              <button type="button" id="vy-next" aria-label="Next year">›</button>
+            </span>
+          </label>
+        </div>
+        <div class="kv" id="varsha-kv"></div>
+        <div class="split" style="margin-top:1rem">
+          <div class="chart-box" id="varsha-box"></div>
+          <div class="tbl" id="varsha-table"></div>
+        </div>
+        <p class="hint">Annual chart (Tajika) cast for the moment the Sun returns to its natal sidereal position, at the birthplace. Muntha moves one sign per year from the natal Lagna.</p>
       </div>
 
       <div class="panel" data-panel="dasha" hidden>

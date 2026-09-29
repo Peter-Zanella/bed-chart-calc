@@ -123,3 +123,13 @@ footer { text-align: center; color: var(--mute); font-size: .8rem; padding: 1rem
 .c-title { fill: var(--accent); font: 700 15px Georgia, serif; }
 .c-sub { fill: var(--mute); font: 12px Georgia, serif; }
 .c-asc { stroke: var(--gold); stroke-width: 2; }
+
+label.inline { flex-direction: row; align-items: center; gap: .5rem; }
+label.inline input { width: 6.5rem; text-align: center; }
+table.akv th, table.akv td { text-align: center; padding: .35rem .3rem; font-variant-numeric: tabular-nums; }
+table.akv th:first-child, table.akv td:first-child { text-align: left; }
+.good { color: var(--good); } .avg { color: var(--gold); } .weak { color: var(--bad); }
+.nat { text-decoration: underline; font-weight: 700; }
+tr.total td { font-weight: 700; border-top: 2px solid var(--line); }
+.c-num { font: 700 22px Georgia, serif; }
+.c-num.good { fill: var(--good); } .c-num.avg { fill: var(--gold); } .c-num.weak { fill: var(--bad); }
