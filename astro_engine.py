@@ -13,7 +13,7 @@ Accuracy tiers - tried automatically in order:
 """
 
 # ── stdlib ────────────────────────────────────────────────────────────────────
-import json, math, re, time, urllib.parse, urllib.request
+import json, logging, math, re, time, urllib.parse, urllib.request
 from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 from typing   import Dict, List, Optional, Tuple
@@ -1299,6 +1299,8 @@ def build_chara_dasha(planet_signs: Dict[str, int], lons: Dict[str, float],
 # GEOCODING  (Nominatim → IANA timezone → zoneinfo for historical DST)
 # ══════════════════════════════════════════════════════════════════════════════
 
+_log = logging.getLogger("astro_engine.geo")
+
 _UA = {"User-Agent": "VedicAstroCalc/3.0 (birth-chart app; contact via app)",
        "Accept": "application/json"}
 
@@ -1306,10 +1308,13 @@ def _http_get(url:str) -> Optional[dict]:
     try:
         req = urllib.request.Request(url, headers=_UA)
         with urllib.request.urlopen(req, timeout=8) as r: return json.loads(r.read().decode())
-    except Exception: return None
+    except Exception as e:
+        _log.warning("geocoding request failed: %s: %s", url.split("?")[0], e)
+        return None
 
 def _open_meteo_geo(name:str) -> Optional[Dict]:
-    """Open-Meteo geocoder - free, no key, returns coordinates AND an IANA timezone."""
+    """Open-Meteo geocoder - free, no key, returns coordinates AND an IANA timezone.
+    It only knows place names, not street addresses."""
     d = _http_get("https://geocoding-api.open-meteo.com/v1/search"
                   f"?name={urllib.parse.quote_plus(name)}&count=1&language=en&format=json")
     if not d or not d.get("results"):
@@ -1321,6 +1326,21 @@ def _open_meteo_geo(name:str) -> Optional[Dict]:
             label.append(x)
     return {"lat": float(r["latitude"]), "lon": float(r["longitude"]),
             "label": ", ".join(label), "iana": r.get("timezone")}
+
+def _photon_geo(query:str) -> Optional[Dict]:
+    """Photon (komoot, OpenStreetMap data) - also finds street addresses."""
+    d = _http_get(f"https://photon.komoot.io/api/?q={urllib.parse.quote_plus(query)}&limit=1")
+    feats = (d or {}).get("features") or []
+    if not feats:
+        return None
+    f = feats[0]; pr = f.get("properties", {})
+    lon, lat = f["geometry"]["coordinates"][:2]
+    place = pr.get("city") or pr.get("town") or pr.get("village") or pr.get("name") or query
+    label = []
+    for x in (place, pr.get("country")):
+        if x and x not in label:
+            label.append(x)
+    return {"lat": float(lat), "lon": float(lon), "label": ", ".join(label), "iana": None}
 
 def _nominatim_geo(query:str) -> Optional[Dict]:
     time.sleep(1)   # Nominatim policy: ≤1 request/second
@@ -1337,19 +1357,46 @@ def _nominatim_geo(query:str) -> Optional[Dict]:
     return {"lat": float(r["lat"]), "lon": float(r["lon"]),
             "label": f"{city}, {addr.get('country','')}".rstrip(", "), "iana": None}
 
-@lru_cache(maxsize=512)
+def _place_parts(query:str) -> List[str]:
+    """'Rheinstrasse 5, 4410 Liestal, Schweiz' → ['Liestal', 'Schweiz']: the comma parts
+    without house numbers and postcodes, street names dropped, for the name-only geocoder."""
+    out = []
+    for part in query.split(","):
+        had_digits = bool(re.search(r"\d", part))
+        word = re.sub(r"\s+", " ", re.sub(r"\b\d[\w-]*\b", " ", part)).strip(" -")
+        if had_digits and not re.match(r"^\s*\d", part):
+            continue            # "Rheinstrasse 5": a street, not a place
+        if len(word) >= 2 and word not in out:
+            out.append(word)
+    return out
+
+_GEO_CACHE: Dict[str, Dict] = {}
+
 def geocode(query:str) -> Optional[Dict]:
-    """Resolve a place name. Open-Meteo first (reliable + gives a timezone),
-    Nominatim as a fallback. Cached so the same place isn't fetched twice."""
-    names = [query.strip()]
-    head = query.split(",")[0].strip()
-    if head and head != query.strip():
-        names.append(head)
-    for nm in names:
-        g = _open_meteo_geo(nm)
-        if g:
-            return g
-    return _nominatim_geo(query)
+    """Resolve a place name or address. Open-Meteo first (gives a timezone), then Photon
+    and Nominatim, which also know street addresses, then Open-Meteo on the town part of
+    an address. Successes are cached; failures are not, so a network hiccup isn't sticky."""
+    q = re.sub(r"\s+", " ", query).strip().strip(",")
+    if len(q) < 2:
+        return None
+    key = q.lower()
+    if key in _GEO_CACHE:
+        return _GEO_CACHE[key]
+    head = q.split(",")[0].strip()
+    g = _open_meteo_geo(q) or (head != q and _open_meteo_geo(head)) or None
+    if not g:
+        g = _photon_geo(q) or _nominatim_geo(q)
+    if not g:
+        for part in _place_parts(q):
+            if part != head and (g := _open_meteo_geo(part)):
+                break
+    if g:
+        if len(_GEO_CACHE) > 512:
+            _GEO_CACHE.clear()
+        _GEO_CACHE[key] = g
+    else:
+        _log.warning("place not found: %r", q)
+    return g
 
 def iana_tz(lat:float, lon:float) -> Optional[str]:
     d = _http_get(f"https://timeapi.io/api/timezone/coordinate?latitude={lat:.6f}&longitude={lon:.6f}")

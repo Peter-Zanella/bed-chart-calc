@@ -69,3 +69,33 @@ def test_web_extras():
     assert len(m["grid"]) == 31
     e = cl.get("/api/eclipses?start=2026&end=2026").json()
     assert e["years"]["2026"]
+
+
+def test_geocode_address_and_no_sticky_failures(monkeypatch):
+    """A street address is found via Photon, and a failed lookup is retried next time."""
+    import astro_engine as E
+    E._GEO_CACHE.clear()
+    monkeypatch.setattr(E.time, "sleep", lambda s: None)
+    calls, online = [], {"up": False}
+
+    def fake(url):
+        calls.append(url)
+        if not online["up"]:
+            return None
+        if "open-meteo" in url:
+            return {"results": [{"latitude": 47.48, "longitude": 7.73, "name": "Liestal",
+                                 "country": "Switzerland", "timezone": "Europe/Zurich"}]} \
+                if "name=Liestal&" in url else {}
+        if "photon" in url:
+            return {"features": [{"geometry": {"coordinates": [7.7351, 47.4841]},
+                                  "properties": {"city": "Liestal", "country": "Schweiz"}}]}
+        return None
+    monkeypatch.setattr(E, "_http_get", fake)
+
+    assert E.geocode("Rheinstrasse 5, 4410 Liestal") is None      # network down
+    online["up"] = True
+    g = E.geocode("Rheinstrasse 5, 4410 Liestal")                 # not cached as a miss
+    assert g and abs(g["lat"] - 47.4841) < 1e-4 and g["label"] == "Liestal, Schweiz"
+    assert E.geocode("Liestal")["iana"] == "Europe/Zurich"
+    n = len(calls); E.geocode("liestal "); assert len(calls) == n   # cached
+    E._GEO_CACHE.clear()
