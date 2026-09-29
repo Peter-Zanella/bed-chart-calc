@@ -1,0 +1,5 @@
+# Web app (web/server.py). The Streamlit app keeps using ../requirements.txt.
+fastapi==0.141.1
+uvicorn[standard]==0.54.0
+pyswisseph==2.10.3.2
+tzdata>=2024.1
