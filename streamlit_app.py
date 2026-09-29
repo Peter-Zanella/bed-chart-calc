@@ -20,7 +20,95 @@ from astro_engine import (SIGNS, SIGN_LORDS, PLANET_ORDER, _AKV_PLANETS,
 SAVE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "saved_charts.json")
 
 
+# Streamlit Cloud wipes local files on every reboot. With GIST_TOKEN set in the
+# app's secrets, charts are kept in a private GitHub gist instead; without it the
+# local file is used as before.
+_GIST_DESC = "bed-chart-calc saved charts"
+_GIST_FILE = "saved_charts.json"
+
+
+@st.cache_resource
+def _gist_state() -> dict:
+    # survives script reruns (plain module globals are reset on every rerun)
+    return {"id": None, "data": None, "at": 0.0}
+
+
+_gist = _gist_state()
+
+
+def _gist_token():
+    try:
+        return st.secrets.get("GIST_TOKEN")
+    except Exception:
+        return None
+
+
+def _gh(method: str, url: str, token: str, body=None):
+    import urllib.request
+    req = urllib.request.Request(
+        url if url.startswith("https://") else "https://api.github.com" + url, method=method,
+        data=json.dumps(body).encode() if body is not None else None,
+        headers={"Authorization": f"Bearer {token}",
+                 "Accept": "application/vnd.github+json",
+                 "Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=15) as r:
+        raw = r.read().decode("utf-8")
+    return raw if url.startswith("https://") else json.loads(raw)
+
+
+def _gist_id(token: str):
+    if _gist["id"]:
+        return _gist["id"]
+    try:
+        gid = st.secrets.get("GIST_ID")
+    except Exception:
+        gid = None
+    if not gid:
+        for page in range(1, 6):
+            gists = _gh("GET", f"/gists?per_page=100&page={page}", token)
+            gid = next((g["id"] for g in gists if g.get("description") == _GIST_DESC), None)
+            if gid or len(gists) < 100:
+                break
+    _gist["id"] = gid
+    return gid
+
+
+def _gist_load(token: str) -> dict:
+    import time
+    if _gist["data"] is not None and time.time() - _gist["at"] < 60:
+        return _gist["data"]
+    gid = _gist_id(token)
+    data = {}
+    if gid:
+        f = _gh("GET", f"/gists/{gid}", token)["files"].get(_GIST_FILE)
+        if f:
+            raw = _gh("GET", f["raw_url"], token) if f.get("truncated") else f["content"]
+            data = json.loads(raw or "{}")
+    _gist.update(data=data, at=time.time())
+    return data
+
+
+def _gist_write(token: str, data: dict) -> None:
+    import time
+    files = {_GIST_FILE: {"content": json.dumps(data, indent=2, ensure_ascii=False)}}
+    gid = _gist_id(token)
+    if gid:
+        _gh("PATCH", f"/gists/{gid}", token, {"files": files})
+    else:
+        _gist["id"] = _gh("POST", "/gists", token,
+                          {"description": _GIST_DESC, "public": False, "files": files})["id"]
+    _gist.update(data=data, at=time.time())
+
+
 def load_all() -> dict:
+    token = _gist_token()
+    if token:
+        try:
+            data = dict(_gist_load(token))
+            st.session_state.pop("_gist_error", None)
+            return data
+        except Exception as e:
+            st.session_state["_gist_error"] = str(e)
     try:
         with open(SAVE_PATH, "r", encoding="utf-8") as f:
             return json.load(f)
@@ -29,6 +117,14 @@ def load_all() -> dict:
 
 
 def _write(data: dict) -> bool:
+    token = _gist_token()
+    if token:
+        try:
+            _gist_write(token, data)
+            return True
+        except Exception as e:
+            st.session_state["_gist_error"] = str(e)
+            return False
     try:
         with open(SAVE_PATH, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
@@ -932,6 +1028,11 @@ def make_pdf(params: dict, compat_json: str = "") -> bytes:
     compat = json.loads(compat_json) if compat_json else None
     return build_pdf(compute(params), compat)
 
+@st.cache_data(show_spinner=False)
+def varshaphala(y: int, mo: int, d: int, sun_lon: float, lagna_si: int,
+                lat: float, lon: float, target_year: int):
+    return E.compute_varshaphala(y, mo, d, sun_lon, lagna_si, lat, lon, target_year)
+
 @st.cache_data(show_spinner=False, ttl=86400)
 def resolve_city(city: str, y: int, mo: int, d: int, h: int, mi: int):
     # cached across sessions so the same place isn't geocoded repeatedly
@@ -1082,8 +1183,13 @@ with st.sidebar.expander(f"📂 Saved charts ({len(saved)})", expanded=bool(save
             load_entry(key, entry)
         if c3.button("🗑", key=f"del_{key}", use_container_width=True):
             delete_chart_entry(key); st.rerun()
-    st.caption("Saved charts live on the server and reset when the app sleeps. "
-               "**Back up** to a file to keep them, or bookmark a chart's link (below).")
+    if _gist_token() and not st.session_state.get("_gist_error"):
+        st.caption("Saved charts are kept in your private GitHub gist and survive reboots.")
+    else:
+        if st.session_state.get("_gist_error"):
+            st.warning(f"GitHub gist not reachable ({st.session_state['_gist_error']}).")
+        st.caption("Saved charts live on the server and reset when the app sleeps. "
+                   "**Back up** to a file to keep them, or bookmark a chart's link (below).")
     bcol1, bcol2 = st.columns(2)
     if saved:
         bcol1.download_button("⬇ Back up", data=json.dumps(saved, indent=2, ensure_ascii=False),
@@ -1373,6 +1479,9 @@ with st.expander("Chart metadata"):
 style = st.radio("Chart style", ["South Indian", "North Indian"],
                  horizontal=True, key="chart_style")
 
+# per-chart suffix so year/dasha pickers reset when another chart is loaded
+_ckey = f"{ap['year']}{ap['month']:02d}{ap['day']:02d}{ap['hour']:02d}{ap['minute']:02d}_{ap['lat']:.2f}_{ap['lon']:.2f}"
+
 tabs = st.tabs(["Planets & Houses", "Divisional charts", "Ashtakavarga",
                 "Varshaphala", "Vimshottari Dasha", "Jaimini", "Transits", "Panchang",
                 "Yogas", "Muhurta", "Compatibility", "Shad Bala",
@@ -1481,6 +1590,12 @@ with tabs[2]:
 # ── Tab 4 ─────────────────────────────────────────────────────────────────────
 with tabs[3]:
     vp = chart["varshaphala"]
+    _vy = st.number_input("Year (solar return)", min_value=ap["year"], max_value=ap["year"] + 120,
+                          value=vp["target_year"], step=1, key=f"varsha_year_{_ckey}",
+                          help=f"Default is the running year ({vp['target_year']}–{vp['target_year']+1}).")
+    if _vy != vp["target_year"]:
+        vp = varshaphala(ap["year"], ap["month"], ap["day"], chart["planets"]["Sun"]["lon"],
+                         chart["lagna_idx"], ap["lat"], ap["lon"], int(_vy))
     x, y, z = st.columns(3)
     x.metric(f"Year {vp['year_number']}", f"{vp['target_year']}–{vp['target_year']+1}")
     y.metric("Annual Lagna", f"{vp['lagna']} {vp['lagna_pos']}")
@@ -1517,20 +1632,27 @@ with tabs[4]:
     st.dataframe([{"Planet": md["planet"], "Start": f(md["start"]), "End": f(md["end"]),
                    "Years": round(md["years"], 1), "Active": "◄" if md["active"] else ""}
                   for md in mahas], hide_index=True, use_container_width=True)
-    act = next((md for md in mahas if md["active"]), None)
-    if act:
-        st.subheader(f"Antardashas in {act['planet']} Mahadasha")
-        st.dataframe([{"Antardasha": f"{act['planet']} / {ad['planet']}",
-                       "Start": f(ad["start"]), "End": f(ad["end"]),
-                       "Years": round(ad["years"], 2), "Active": "◄" if ad["active"] else ""}
-                      for ad in act["antardashas"]], hide_index=True, use_container_width=True)
-        aad = next((ad for ad in act["antardashas"] if ad["active"]), None)
-        if aad:
-            st.subheader(f"Pratyantardashas in {act['planet']} / {aad['planet']}")
-            st.dataframe([{"Pratyantardasha": f"{act['planet']} / {aad['planet']} / {pad['planet']}",
-                           "Start": f(pad["start"]), "End": f(pad["end"]),
-                           "Years": round(pad["years"], 3), "Active": "◄" if pad["active"] else ""}
-                          for pad in aad["pratyantardashas"]], hide_index=True, use_container_width=True)
+    _mlabel = lambda md: (f"{md['planet']} · {f(md['start'])} – {f(md['end'])}"
+                          + (" ◄ now" if md["active"] else ""))
+    _mi = next((i for i, md in enumerate(mahas) if md["active"]), 0)
+    act = mahas[st.selectbox("Mahadasha", range(len(mahas)), index=_mi,
+                             format_func=lambda i: _mlabel(mahas[i]), key=f"dasha_maha_{_ckey}")]
+    st.subheader(f"Antardashas in {act['planet']} Mahadasha")
+    st.dataframe([{"Antardasha": f"{act['planet']} / {ad['planet']}",
+                   "Start": f(ad["start"]), "End": f(ad["end"]),
+                   "Years": round(ad["years"], 2), "Active": "◄" if ad["active"] else ""}
+                  for ad in act["antardashas"]], hide_index=True, use_container_width=True)
+    ads = act["antardashas"]
+    if ads:
+        _ai = next((i for i, ad in enumerate(ads) if ad["active"]), 0)
+        aad = ads[st.selectbox("Antardasha", range(len(ads)), index=_ai,
+                               format_func=lambda i: _mlabel(ads[i]),
+                               key=f"dasha_antar_{_ckey}_{act['start']:%Y%m%d}")]
+        st.subheader(f"Pratyantardashas in {act['planet']} / {aad['planet']}")
+        st.dataframe([{"Pratyantardasha": f"{act['planet']} / {aad['planet']} / {pad['planet']}",
+                       "Start": f(pad["start"]), "End": f(pad["end"]),
+                       "Years": round(pad["years"], 3), "Active": "◄" if pad["active"] else ""}
+                      for pad in aad["pratyantardashas"]], hide_index=True, use_container_width=True)
 
 # ── Tab 6: Jaimini ────────────────────────────────────────────────────────────
 with tabs[5]:
