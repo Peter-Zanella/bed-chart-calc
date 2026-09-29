@@ -22,3 +22,9 @@ jobs:
           docker run -d -p 8000:8000 --name app jyotisa
           for i in $(seq 1 30); do curl -fs localhost:8000/api/health && exit 0; sleep 1; done
           docker logs app; exit 1
+      - name: place lookup from inside the image (needs the public geocoders)
+        continue-on-error: true
+        run: |
+          curl -fsS "localhost:8000/api/place?q=Liestal&date=1957-08-24&time=13:55" && echo
+          curl -fsS "localhost:8000/api/place?q=Rheinstrasse%205,%204410%20Liestal&date=1957-08-24" && echo
+          docker logs app 2>&1 | tail -20

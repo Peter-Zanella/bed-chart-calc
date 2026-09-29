@@ -51,7 +51,7 @@ function readForm() {
 
 async function lookupPlace(q, date, time) {
   const r = await fetch(`api/place?q=${encodeURIComponent(q)}&date=${date}&time=${time}`);
-  if (!r.ok) throw new Error(r.status === 404 ? "Place not found. Check the spelling or enter coordinates." : "Lookup failed.");
+  if (!r.ok) throw new Error(r.status === 404 ? "Place not found. Try just the town and country, e.g. \"Liestal, Switzerland\"." : "Lookup failed.");
   return r.json();
 }
 async function postJSON(url, body) {
