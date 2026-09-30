@@ -205,6 +205,15 @@ def _influences_on_house(chart: Dict, house: int) -> List[str]:
     return occ + asp
 
 
+def _infl_name(chart: Dict, p: str, house: int) -> str:
+    """Planetenname für die Herleitung; aspektierende Planeten mit Herkunft,
+    damit »6. Haus: Ketu« nicht als Besetzung gelesen wird."""
+    if p in ((chart.get("occupants") or {}).get(house, []) or []):
+        return DE.get(p, p)
+    ph = chart.get("planets", {}).get(p, {}).get("house", 0)
+    return f"{DE.get(p, p)} (Aspekt aus H{ph})"
+
+
 def _moon_brightness(chart: Dict) -> Tuple[str, float]:
     """(hell|mittel|dunkel, Elongation°) aus Sonnen-/Mondlänge."""
     lons = chart.get("lons", {})
@@ -252,7 +261,7 @@ def compute_doshas(chart: Dict) -> Dict:
             v = _dosha_vote(p, moon_state)
             if v:
                 score[v[0]] += v[1]
-                parts.append(f"{DE.get(p, p)} → {v[0]}")
+                parts.append(f"{_infl_name(chart, p, 1)} → {v[0]}")
         lines.append(("Lagna", ", ".join(parts) if parts else "—"))
     else:
         sign = chart.get("lagna")
@@ -268,7 +277,7 @@ def compute_doshas(chart: Dict) -> Dict:
         v = _dosha_vote(p, moon_state)
         if v:
             score[v[0]] += v[1]
-            parts.append(f"{DE.get(p, p)} → {v[0]}")
+            parts.append(f"{_infl_name(chart, p, 6)} → {v[0]}")
     lines.append(("6. Haus", ", ".join(parts) if parts else "unbesetzt und unaspektiert"))
 
     # (3) Mond: Planeteneinflüsse dominieren, Helligkeit sonst/sekundär.
@@ -280,7 +289,7 @@ def compute_doshas(chart: Dict) -> Dict:
             v = _dosha_vote(p, moon_state)
             if v:
                 score[v[0]] += v[1]
-                parts.append(f"{DE.get(p, p)} → {v[0]}")
+                parts.append(f"{_infl_name(chart, p, mh)} → {v[0]}")
         parts.append(f"(Mond selbst: {moon_state})")
     else:
         v = _dosha_vote("Moon", moon_state)
