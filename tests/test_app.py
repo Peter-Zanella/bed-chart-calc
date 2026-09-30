@@ -24,6 +24,18 @@ def test_basel_1968_before_sunrise():
     assert later["panchang"]["vara"] == "Monday"
 
 
+def test_medical_marks_aspects_apart_from_occupants():
+    import medical
+    # Ketu sits in H10 and reaches the 6th only by its 9th aspect
+    c = E.generate_chart(1990, 3, 10, 23, 58, 47.4833, 7.7356, 1.0, "Liestal")
+    assert c["planets"]["Ketu"]["house"] == 10
+    rows = dict(medical.compute_doshas(c)["derivation"])
+    assert rows["6. Haus"] == "Ketu (Aspekt aus H10) → Pitta"
+    # 1957 chart: Ketu occupies the 6th, so no aspect note
+    c = E.generate_chart(1957, 8, 24, 13, 55, 47.4833, 7.7356, 1.0, "Liestal")
+    assert dict(medical.compute_doshas(c)["derivation"])["6. Haus"] == "Ketu → Pitta"
+
+
 def test_polar_day_falls_back_to_calendar_weekday():
     c = E.generate_chart(2000, 6, 21, 12, 0, 69.65, 18.96, 2.0, "Tromsø")
     assert c["panchang"]["vara"] == "Wednesday"
