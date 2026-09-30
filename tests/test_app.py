@@ -26,11 +26,13 @@ def test_basel_1968_before_sunrise():
 
 def test_medical_marks_aspects_apart_from_occupants():
     import medical
-    # Ketu sits in H10 and reaches the 6th only by its 9th aspect
+    # Ketu sits in H10; the nodes act only by occupation, so its disputed
+    # 9th aspect no longer reaches the 6th
     c = E.generate_chart(1990, 3, 10, 23, 58, 47.4833, 7.7356, 1.0, "Liestal")
     assert c["planets"]["Ketu"]["house"] == 10
     rows = dict(medical.compute_doshas(c)["derivation"])
-    assert rows["6. Haus"] == "Ketu (Aspekt aus H10) → Pitta"
+    assert rows["6. Haus"] == "unbesetzt und unaspektiert"
+    assert rows["Lagna"] == "Jupiter (Aspekt aus H9) → Kapha"
     # 1957 chart: Ketu occupies the 6th, so no aspect note
     c = E.generate_chart(1957, 8, 24, 13, 55, 47.4833, 7.7356, 1.0, "Liestal")
     assert dict(medical.compute_doshas(c)["derivation"])["6. Haus"] == "Ketu → Pitta"
