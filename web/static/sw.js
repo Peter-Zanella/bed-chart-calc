@@ -1,5 +1,5 @@
 // Keeps the app shell available offline; chart calculations always go to the server.
-const CACHE = "jyotisa-v2";
+const CACHE = "jyotisa-v3";
 const SHELL = ["./", "index.html", "style.css", "app.js", "manifest.webmanifest", "icon.svg", "icon-192.png"];
 self.addEventListener("install", e => e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL))));
 self.addEventListener("activate", e => e.waitUntil(

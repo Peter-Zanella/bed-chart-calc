@@ -83,3 +83,30 @@ def test_web_extras():
     assert len(m["grid"]) == 31
     e = cl.get("/api/eclipses?start=2026&end=2026").json()
     assert e["years"]["2026"]
+
+
+def test_rectify_window():
+    from fastapi.testclient import TestClient
+    from web.server import app
+    cl = TestClient(app)
+    r = cl.post("/api/rectify", json={"date": "1957-08-24", "time": "13:55", "lat": 47.4833,
+                                     "lon": 7.7356, "tz": 1, "span": 30}).json()
+    f = {x["key"]: x for x in r["factors"]}
+    assert f["lagna"]["value"] == "Scorpio 8° 42'" and f["lagna"]["from"] is None
+    assert f["moon_nak"]["value"].startswith("Ashlesha 3")
+    # the D10 Lagna flips 1.6 minutes after 13:55, matching full charts either side
+    assert (f["d10"]["value"], f["d10"]["to"]) == ("Virgo", "13:56:33")
+    ch = next(c for c in r["changes"] if c["key"] == "d10" and c["sec"] > 0)
+    assert (ch["at"], ch["from"], ch["to"]) == ("13:56:34", "Virgo", "Libra")
+    for hh, mm, want in ((13, 56, "Virgo"), (13, 57, "Libra")):
+        c = E.generate_chart(1957, 8, 24, hh, mm, 47.4833, 7.7356, 1.0)
+        assert E.SIGNS[c["d10_lagna"]] == want
+    assert r["step"] == 2 and len(r["rows"]) == 31
+    mid = r["rows"][15]
+    assert mid["offset"] == 0 and mid["d9"] == "Virgo" and mid["balance"] == "Mercury 7y 3m"
+    # rows crossing midnight carry their own date
+    r = cl.post("/api/rectify", json={"date": "1957-08-24", "time": "23:55", "lat": 47.4833,
+                                     "lon": 7.7356, "tz": 1, "span": 10, "step": 5}).json()
+    assert [x["date"] for x in r["rows"]][-1] == "1957-08-25"
+    assert cl.post("/api/rectify", json={"date": "1957-08-24", "time": "13:55", "lat": 0,
+                                        "lon": 0, "tz": 0, "span": 0}).status_code == 422

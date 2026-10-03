@@ -61,6 +61,7 @@
           <button class="link" id="btn-edit">Edit</button>
           <button class="link" id="btn-save">Save</button>
           <button class="link" id="btn-pdf">PDF</button>
+          <button class="link" id="btn-rectify">Rectify</button>
         </span>
       </div>
       <p class="hint" id="s-question" hidden></p>
@@ -221,7 +222,7 @@
       <!-- More: match · medizin · fixsterne · upayas -->
       <div class="panel" data-panel="more" hidden>
         <nav class="subtabs">
-          <button data-sub="match" aria-pressed="true">Compatibility</button><button data-sub="medical">Medizin</button><button data-sub="fixstars">Fixsterne</button><button data-sub="remedies">Upāyas</button>
+          <button data-sub="match" aria-pressed="true">Compatibility</button><button data-sub="medical">Medizin</button><button data-sub="fixstars">Fixsterne</button><button data-sub="remedies">Upāyas</button><button data-sub="rectify">Birth time</button>
         </nav>
         <div class="sub" data-subpanel="match">
           <p class="hint">Ashtakoota (Guna Milan): the classical 36-point Moon match between this chart and a partner.</p>
@@ -245,6 +246,39 @@
         <div class="sub svc" data-subpanel="medical" hidden><p class="hint">Loading…</p></div>
         <div class="sub svc" data-subpanel="fixstars" hidden><p class="hint">Loading…</p></div>
         <div class="sub svc" data-subpanel="remedies" hidden><p class="hint">Loading…</p></div>
+        <div class="sub" data-subpanel="rectify" hidden>
+          <p class="hint">Birth time rectification. When the recorded time is uncertain, see what changes within a window around it, then choose the time that fits the life events.</p>
+          <div class="toolbar">
+            <label class="inline">Birth time
+              <span class="row nudge">
+                <button type="button" data-nudge="-5" aria-label="5 minutes earlier">−5</button>
+                <button type="button" data-nudge="-1" aria-label="1 minute earlier">−1</button>
+                <b id="rt-time"></b>
+                <button type="button" data-nudge="1" aria-label="1 minute later">+1</button>
+                <button type="button" data-nudge="5" aria-label="5 minutes later">+5</button>
+              </span>
+            </label>
+            <label class="inline">Uncertainty
+              <select id="rt-span">
+                <option value="5">± 5 min</option><option value="10">± 10 min</option><option value="15" selected>± 15 min</option>
+                <option value="30">± 30 min</option><option value="60">± 1 h</option><option value="120">± 2 h</option><option value="360">± 6 h</option>
+              </select>
+            </label>
+            <label class="inline">Step
+              <select id="rt-step">
+                <option value="0" selected>auto</option><option value="1">1 min</option><option value="2">2 min</option><option value="5">5 min</option>
+                <option value="10">10 min</option><option value="15">15 min</option><option value="30">30 min</option>
+              </select>
+            </label>
+          </div>
+          <h2>At this time</h2>
+          <div class="kv" id="rt-factors"></div>
+          <h2 id="rt-changes-h">Changes in the window</h2>
+          <div class="tbl" id="rt-changes"></div>
+          <h2>Time by time</h2>
+          <div class="tbl" id="rt-rows"></div>
+          <p class="hint">Highlighted cells differ from the row above. Tap a time to recalculate the whole chart for it; the minute buttons do the same in small steps. The UTC offset stays as entered. Dasha dates shift with every minute because the Moon moves about half a minute of arc per minute of time.</p>
+        </div>
       </div>
     </section>
   </main>

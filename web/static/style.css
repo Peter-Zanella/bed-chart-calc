@@ -162,3 +162,11 @@ table.heat td.h.weak { background: var(--bad); color: #fff; }
 .svc .dt { width: 100%; border-collapse: collapse; font-size: .85rem; }
 .svc .dt th { background: var(--sand); color: var(--mute); font-weight: 600; text-transform: uppercase; font-size: .7rem; letter-spacing: .06em; padding: .5rem .6rem; }
 .svc .dt td { padding: .45rem .6rem; white-space: normal; }
+/* birth time rectification */
+.nudge { align-items: center; }
+.nudge button { min-width: 44px; padding: .35rem .5rem; }
+.nudge b { min-width: 3.2rem; text-align: center; font-variant-numeric: tabular-nums; color: var(--ink); }
+table.rect td { font-variant-numeric: tabular-nums; }
+table.rect td.chg { background: var(--lagna); color: var(--accent); font-weight: 600; }
+table.rect tr.cur td { font-weight: 700; border-top: 2px solid var(--accent); border-bottom: 2px solid var(--accent); }
+table.rect button.link { font-variant-numeric: tabular-nums; }
