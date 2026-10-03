@@ -25,6 +25,16 @@ STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 app = FastAPI(title="Vedic Birth Chart", docs_url="/api/docs", redoc_url=None)
 
 
+@app.middleware("http")
+async def revalidate_static(request, call_next):
+    # Without Cache-Control the browser caches the page and scripts heuristically,
+    # so after a deploy the installed app kept showing the old version.
+    resp = await call_next(request)
+    if not request.url.path.startswith("/api/"):
+        resp.headers.setdefault("Cache-Control", "no-cache")
+    return resp
+
+
 def _jsonable(x):
     """Engine results hold datetimes, tuples and sets; turn them into plain JSON."""
     if isinstance(x, dict):
