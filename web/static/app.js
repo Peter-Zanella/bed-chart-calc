@@ -825,4 +825,13 @@ fillForm(fromUrl || DEFAULT);
 form.dataset.placeFor = placeKey();                 // defaults already carry coordinates
 if (fromUrl) calculate(fromUrl, { push: false });
 
-if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+if ("serviceWorker" in navigator) {
+  // reload once when a new version takes over, so the page matches the new scripts
+  const had = !!navigator.serviceWorker.controller;
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (had && !reloaded) { reloaded = true; location.reload(); }
+  });
+  navigator.serviceWorker.register("sw.js", { updateViaCache: "none" })
+    .then(r => r.update()).catch(() => {});
+}
