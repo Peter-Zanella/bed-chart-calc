@@ -61,6 +61,8 @@ def test_web_api():
     assert v["muntha_sign"] == E.SIGNS[(7 + 73) % 12]     # natal Lagna Scorpio + 73 signs
     assert len(r.json()["ashtakavarga"]["Sarva"]) == 12
     assert cl.get("/").status_code == 200
+    # page and scripts revalidate, so a deploy shows up without a hard reload
+    assert cl.get("/app.js").headers["cache-control"] == "no-cache"
 
 
 def test_web_extras():
