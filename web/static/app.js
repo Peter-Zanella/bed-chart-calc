@@ -620,6 +620,74 @@ $("#prashna-form").addEventListener("submit", async e => {
   }
 });
 
+// ── Birth time rectification ────────────────────────────────────────────────
+const RT_COLS = [["lagna", "Lagna"], ["d9", "D9"], ["d10", "D10"], ["d3", "D3"], ["d4", "D4"], ["moon_nak", "Moon"]];
+const fmtMin = m => m >= 60 ? `${Math.floor(m / 60)} h ${Math.round(m % 60)} min` : `${m < 10 ? m.toFixed(1) : Math.round(m)} min`;
+
+// local date and time shifted by whole minutes (calendar arithmetic only, the UTC offset stays)
+function shiftTime(p, min) {
+  const [y, mo, d] = p.date.split("-").map(Number), [h, mi] = p.time.split(":").map(Number);
+  const t = new Date(Date.UTC(y, mo - 1, d, h, mi + min)).toISOString();
+  return { ...p, date: t.slice(0, 10), time: t.slice(11, 16) };
+}
+function useTime(p) {
+  fillForm(p); form.dataset.placeFor = placeKey();
+  calculate(p);
+}
+
+async function loadRectify() {
+  const p = state.params, span = +$("#rt-span").value, step = +$("#rt-step").value;
+  $("#rt-time").textContent = p.time;
+  $("#rt-rows").innerHTML = `<p class="hint">Calculating…</p>`;
+  try {
+    const r = await (await postJSON("api/rectify", { ...chartBody(p), span, step })).json();
+    $("#rt-factors").innerHTML = r.factors.map(f => {
+      const near = Math.min(f.minus ?? Infinity, f.plus ?? Infinity);
+      const hold = f.from || f.to
+        ? `holds ${f.from || "…"} – ${f.to || "…"}` +
+          ` (${f.minus != null ? "−" + fmtMin(f.minus) : "beyond"} / ${f.plus != null ? "+" + fmtMin(f.plus) : "beyond"})`
+        : `steady across ± ${fmtMin(r.span)}`;
+      return `<div><small>${esc(f.label)}</small><b>${esc(f.value)}</b>` +
+             `<small class="${near < 5 ? "weak" : near < 15 ? "avg" : ""}">${hold}</small></div>`;
+    }).join("");
+    $("#rt-changes-h").textContent = `Changes within ± ${fmtMin(r.span)}`;
+    $("#rt-changes").innerHTML = !r.changes.length ? `<p class="muted">Nothing changes in this window.</p>` :
+      `<table><thead><tr><th>Time</th><th>Offset</th><th>What changes</th><th></th></tr></thead><tbody>` +
+      r.changes.map(c => `<tr><td>${c.at}${c.date !== p.date ? ` <small>${dmy(c.date)}</small>` : ""}</td>` +
+        `<td class="num">${c.offset > 0 ? "+" : ""}${c.offset.toFixed(1)} min</td><td>${esc(c.label)}</td>` +
+        `<td>${esc(c.from)} → <b>${esc(c.to)}</b></td></tr>`).join("") + `</tbody></table>`;
+    const head = `<tr><th>Time</th>${RT_COLS.map(([, l]) => `<th>${l}</th>`).join("")}<th>Dasha balance</th><th>Running now</th></tr>`;
+    let prev = null;
+    const rows = r.rows.map(x => {
+      const chg = k => prev && prev[k] !== x[k] ? " chg" : "";
+      const cells = RT_COLS.map(([k]) => k === "lagna"
+        ? `<td class="${chg(k)}">${x.lagna} <small class="muted">${x.lagna_pos}</small></td>`
+        : `<td class="${chg(k)}">${esc(x[k])}</td>`).join("");
+      const out = `<tr class="${x.offset === 0 ? "cur" : ""}"><td><button class="link" data-rt="${x.date} ${x.time}">${x.time}</button>` +
+        `${x.date !== p.date ? ` <small class="muted">${dmy(x.date)}</small>` : ""}</td>${cells}` +
+        `<td>${esc(x.balance)}</td><td>${esc(x.now)}${x.antar_start ? ` <small class="muted">since ${dmy(x.antar_start)}</small>` : ""}</td></tr>`;
+      prev = x; return out;
+    }).join("");
+    $("#rt-rows").innerHTML = `<table class="rect"><thead>${head}</thead><tbody>${rows}</tbody></table>`;
+  } catch (e) {
+    state.loaded.rectify = false;
+    $("#rt-rows").innerHTML = `<p class="error">${esc(e.message)}</p>`;
+  }
+}
+$("#rt-span").addEventListener("change", () => { pref("rt_span", $("#rt-span").value); loadRectify(); });
+$("#rt-step").addEventListener("change", loadRectify);
+$("#rt-span").value = pref("rt_span") || "15";
+$$("[data-nudge]").forEach(b => b.addEventListener("click", () => useTime(shiftTime(state.params, +b.dataset.nudge))));
+$("#rt-rows").addEventListener("click", e => {
+  const b = e.target.closest("[data-rt]"); if (!b) return;
+  const [date, time] = b.dataset.rt.split(" ");
+  useTime({ ...state.params, date, time });
+});
+$("#btn-rectify").addEventListener("click", () => {
+  showTab("more"); showSub($('.panel[data-panel="more"]'), "rectify");
+  $("#result").scrollIntoView({ behavior: "smooth" });
+});
+
 function renderDasha() {
   const d = state.chart.dashas, cur = d.current;
   const act = d.mahadashas.find(m => m.active);
@@ -692,7 +760,7 @@ document.addEventListener("click", e => {
 function loadSub(sub) {
   if (!state.chart || state.loaded[sub]) return;
   const run = { medical: loadSection, fixstars: loadSection, remedies: loadSection,
-                muhurta: loadMuhurta, eclipses: () => loadEclipses() }[sub];
+                muhurta: loadMuhurta, eclipses: () => loadEclipses(), rectify: loadRectify }[sub];
   if (!run) return;
   state.loaded[sub] = true;
   run(sub);

@@ -18,6 +18,7 @@ sys.path.insert(0, ROOT)
 import astro_engine as E  # noqa: E402
 import eclipse_db  # noqa: E402
 import pdf_report  # noqa: E402
+from web import rectify  # noqa: E402
 
 STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 
@@ -61,6 +62,21 @@ def _compute(p: ChartIn) -> dict:
 @app.post("/api/chart")
 def chart(p: ChartIn):
     return _jsonable(_compute(p))
+
+
+class RectifyIn(ChartIn):
+    span: int = Field(15, ge=1, le=720)      # ± minutes around the birth time
+    step: int = Field(0, ge=0, le=60)        # minutes between table rows, 0 = auto
+
+
+@app.post("/api/rectify")
+def rectify_(p: RectifyIn):
+    """Birth time rectification: what changes within ± span minutes."""
+    hh, mm = map(int, p.time.split(":"))
+    if not (0 <= hh <= 23 and 0 <= mm <= 59):
+        raise HTTPException(422, "time must be HH:MM (24h)")
+    return rectify.sweep(p.date.year, p.date.month, p.date.day, hh, mm, p.lat, p.lon, p.tz,
+                         p.span, p.step)
 
 
 # ── extra sections ──────────────────────────────────────────────────────────
