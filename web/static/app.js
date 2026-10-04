@@ -3,7 +3,10 @@
 
 const PLANETS = ["Sun", "Moon", "Mars", "Mercury", "Jupiter", "Venus", "Saturn", "Rahu", "Ketu"];
 const ABR = { Sun: "Su", Moon: "Mo", Mars: "Ma", Mercury: "Me", Jupiter: "Ju", Venus: "Ve",
-              Saturn: "Sa", Rahu: "Ra", Ketu: "Ke", Ascendant: "As" };
+              Saturn: "Sa", Rahu: "Ra", Ketu: "Ke", Ascendant: "As", Uranus: "Ur", Neptune: "Ne", Pluto: "Pl" };
+// Uranus, Neptune, Pluto: optional, display only (chart and planet table). They are
+// not part of yogas, dashas, aspects or Shad Bala; the engine computes them separately.
+const OUTER = ["Uranus", "Neptune", "Pluto"];
 const SIGNS = ["Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo", "Libra", "Scorpio",
                "Sagittarius", "Capricorn", "Aquarius", "Pisces"];
 const SIGN_ABR = ["Ari", "Tau", "Gem", "Can", "Leo", "Vir", "Lib", "Sco", "Sag", "Cap", "Aqu", "Pis"];
@@ -19,7 +22,8 @@ const esc = s => String(s ?? "").replace(/[&<>"']/g, c =>
 const dmy = iso => { const [y, m, d] = iso.slice(0, 10).split("-"); return `${d}.${m}.${y}`; };
 const deg = pos => pos.split("°")[0];          // "7° 48'" -> "7"
 
-const state = { chart: null, params: null, style: "south", div: "d1", tab: "chart", loaded: {} };
+const state = { chart: null, params: null, style: "south", div: "d1", tab: "chart", loaded: {},
+                outer: false };
 const form = $("#form");
 
 // ── prefs (per device) ──────────────────────────────────────────────────────
@@ -190,9 +194,20 @@ function renderChartTab() {
   const lagna = dv === "d1" ? c.lagna_idx : c[dv + "_lagna"];
   const title = { d1: "Rasi D1", d9: "Navamsa D9", d10: "Dasamsha D10", d3: "Drekkana D3",
                   d4: "Chaturthamsha D4" }[dv];
-  $("#chart-box").innerHTML = chartSvg(items(place, pl), lagna, title, state.params.name || "");
+  const by = items(place, pl), op = outerShown();
+  // the engine gives the outer planets' D1 and D9 signs only
+  if (dv === "d1" || dv === "d9")
+    for (const [n, r] of op)
+      by[dv === "d1" ? r.sign_idx : r.d9_sign_idx].push({ n, txt: ABR[n], deg: dv === "d1" ? deg(r.pos) : "",
+                                                           retro: !!r.retrograde, cls: "outer" });
+  $("#chart-box").innerHTML = chartSvg(by, lagna, title, state.params.name || "");
   $("#chart-side").innerHTML = dv === "d1" ? planetTable(true)
-    : `<p class="hint">${title}: each graha's sign in this division. Degrees are shown in the D1 chart.</p>`;
+    : `<p class="hint">${title}: each graha's sign in this division. Degrees are shown in the D1 chart.` +
+      (op.length && dv !== "d9" ? " Uranus, Neptune and Pluto are shown in D1 and D9 only." : "") + `</p>`;
+}
+
+function outerShown() {
+  return state.outer ? OUTER.filter(n => state.chart.outer_planets?.[n]).map(n => [n, state.chart.outer_planets[n]]) : [];
 }
 
 function chartSvg(by, lagna, title, sub) {
@@ -217,7 +232,7 @@ function southSvg(by, lagna, title, sub) {
     s += `<text x="${x + 96}" y="${y + 14}" text-anchor="end" class="c-sign">${SIGN_ABR[si]}</text>`;
     const list = by[si], lh = Math.min(15, 70 / Math.max(list.length, 1));
     list.forEach((it, i) => {
-      s += `<text x="${x + 7}" y="${y + 32 + i * lh}" class="c-pl${it.cls === "tr" ? " c-tr" : ""}"` +
+      s += `<text x="${x + 7}" y="${y + 32 + i * lh}" class="c-pl${it.cls === "tr" ? " c-tr" : it.cls === "outer" ? " c-outer" : ""}"` +
            `${lh < 15 ? ` style="font-size:${Math.max(10, lh - 1)}px"` : ""}>${label(it)}</text>`;
     });
   }
@@ -243,7 +258,7 @@ function northSvg(by, lagna, title) {
     const lh = [1, 4, 7, 10].includes(h) ? 15 : 13;
     const y0 = ty - ((list.length - 1) * lh) / 2 + 4;
     list.forEach((it, i) => {
-      s += `<text x="${tx}" y="${y0 + i * lh}" text-anchor="middle" class="c-pl${it.cls === "tr" ? " c-tr" : ""}"` +
+      s += `<text x="${tx}" y="${y0 + i * lh}" text-anchor="middle" class="c-pl${it.cls === "tr" ? " c-tr" : it.cls === "outer" ? " c-outer" : ""}"` +
            `${lh < 15 ? ` style="font-size:12px"` : ""}>${label(it)}</text>`;
     });
   }
@@ -258,7 +273,10 @@ function planetTable(compact) {
       `<td>${p.nakshatra} ${p.pada}</td>` +
       (compact ? "" : `<td class="num">${p.house ?? 1}</td><td>${p.nak_lord}</td>`) +
       `<td class="muted">${n === "Ascendant" ? "" : esc(p.dignity)}</td></tr>`;
-  }).join("");
+  }).join("") + outerShown().map(([n, p]) =>
+    `<tr class="outer"><td>${n}${p.retrograde ? ` <span class="r">R</span>` : ""}</td><td>${p.sign}</td>` +
+    `<td class="num">${p.pos}</td><td>${p.nakshatra} ${p.pada}</td>` +
+    (compact ? "" : `<td class="num">${p.house}</td><td>${p.nak_lord}</td>`) + `<td class="muted">—</td></tr>`).join("");
   return `<div class="tbl"><table><thead><tr><th>Graha</th><th>Sign</th><th>Degree</th><th>Nakshatra</th>` +
     (compact ? "" : `<th>House</th><th>Nak. lord</th>`) + `<th>Dignity</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
@@ -380,7 +398,8 @@ function renderUpagrahas() {
   for (const [n, r] of Object.entries(c.upagrahas || {}))
     rows.push(`<tr><td>${esc(r.name || n)}</td><td>${r.sign}</td><td class="num">${r.pos}</td>` +
               `<td>${r.nakshatra} ${r.pada}</td><td class="num">${r.house}</td></tr>`);
-  for (const [n, r] of Object.entries(c.outer_planets || {}))
+  // with the Ur Ne Pl toggle on they are already in the planet table above
+  for (const [n, r] of state.outer ? [] : Object.entries(c.outer_planets || {}))
     rows.push(`<tr><td>${n}${r.retrograde ? ` <span class="r">R</span>` : ""}</td><td>${r.sign}</td>` +
               `<td class="num">${r.pos}</td><td>${r.nakshatra} ${r.pada}</td><td class="num">${r.house}</td></tr>`);
   $("#upagrahas").innerHTML = rows.length ? `<table><thead><tr><th>Point</th><th>Sign</th><th>Degree</th>` +
@@ -833,6 +852,15 @@ function segment(id, key, after) {
 }
 segment("#seg-style", "style", () => { renderChartTab(); renderTransits(); renderAkv(); renderVarsha(); renderJaimini(); });
 segment("#seg-div", "div", renderChartTab);
+{
+  const b = $("#btn-outer");
+  const set = v => { state.outer = v; b.setAttribute("aria-pressed", v); };
+  set(pref("outer") === "1");
+  b.addEventListener("click", () => {
+    set(!state.outer); pref("outer", state.outer ? "1" : "0");
+    if (state.chart) { renderChartTab(); renderPlanets(); }
+  });
+}
 
 // ── summary actions, saved charts ───────────────────────────────────────────
 $("#btn-edit").addEventListener("click", () => {
