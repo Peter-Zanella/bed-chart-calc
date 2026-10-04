@@ -247,7 +247,7 @@
         <div class="sub svc" data-subpanel="fixstars" hidden><p class="hint">Loading…</p></div>
         <div class="sub svc" data-subpanel="remedies" hidden><p class="hint">Loading…</p></div>
         <div class="sub" data-subpanel="rectify" hidden>
-          <p class="hint">Birth time rectification. When the recorded time is uncertain, see what changes within a window around it, then choose the time that fits the life events.</p>
+          <p class="hint">Birth time rectification. When the recorded time is uncertain, see what changes within a window around it, then choose the time that fits the life events. Windows from a day to a year follow the Moon and the planets instead (sign and nakshatra changes, retrograde stations), to observe how the chart shifts over time.</p>
           <div class="toolbar">
             <label class="inline">Birth time
               <span class="row nudge">
@@ -262,12 +262,14 @@
               <select id="rt-span">
                 <option value="5">± 5 min</option><option value="10">± 10 min</option><option value="15" selected>± 15 min</option>
                 <option value="30">± 30 min</option><option value="60">± 1 h</option><option value="120">± 2 h</option><option value="360">± 6 h</option>
+                <option value="1440">± 1 day</option><option value="10080">± 1 week</option><option value="43200">± 1 month</option><option value="525600">± 1 year</option>
               </select>
             </label>
             <label class="inline">Step
               <select id="rt-step">
                 <option value="0" selected>auto</option><option value="1">1 min</option><option value="2">2 min</option><option value="5">5 min</option>
                 <option value="10">10 min</option><option value="15">15 min</option><option value="30">30 min</option>
+                <option value="60">1 h</option><option value="360">6 h</option><option value="1440">1 day</option><option value="10080">1 week</option><option value="43200">30 days</option>
               </select>
             </label>
           </div>
@@ -275,9 +277,9 @@
           <div class="kv" id="rt-factors"></div>
           <h2 id="rt-changes-h">Changes in the window</h2>
           <div class="tbl" id="rt-changes"></div>
-          <h2>Time by time</h2>
+          <h2 id="rt-rows-h">Step by step</h2>
           <div class="tbl" id="rt-rows"></div>
-          <p class="hint">Highlighted cells differ from the row above. Tap a time to recalculate the whole chart for it; the minute buttons do the same in small steps. The UTC offset stays as entered. Dasha dates shift with every minute because the Moon moves about half a minute of arc per minute of time.</p>
+          <p class="hint">Highlighted cells differ from the row above; R marks a retrograde planet. Tap a time to recalculate the whole chart for it; the minute buttons do the same in small steps. The UTC offset stays as entered. Dasha dates shift with every minute because the Moon moves about half a minute of arc per minute of time.</p>
         </div>
       </div>
     </section>

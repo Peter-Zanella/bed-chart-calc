@@ -112,3 +112,20 @@ def test_rectify_window():
     assert [x["date"] for x in r["rows"]][-1] == "1957-08-25"
     assert cl.post("/api/rectify", json={"date": "1957-08-24", "time": "13:55", "lat": 0,
                                         "lon": 0, "tz": 0, "span": 0}).status_code == 422
+
+
+def test_observe_over_a_year():
+    from web import rectify
+    r = rectify.sweep(1957, 8, 24, 13, 55, 47.4833, 7.7356, 1.0, rectify.YEAR)
+    assert r["mode"] == "days" and r["step"] == rectify.MONTH and len(r["rows"]) == 25
+    keys = {c["key"] for c in r["changes"]}
+    assert "lagna" not in keys and "moon_sign" not in keys      # cycle too fast to list
+    # Mercury (Virgo 1° at birth) stations retrograde on 27 Aug 1957, then re-enters Leo
+    merc = [(c["date"], c["from"], c["to"]) for c in r["changes"] if c["key"] == "Mercury"]
+    assert ("1957-08-27", "Virgo", "Virgo R") in merc and ("1957-09-02", "Virgo R", "Leo R") in merc
+    f = {x["key"]: x for x in r["factors"]}
+    assert f["Mercury"]["value"].startswith("Virgo") and f["Mercury"]["to_date"] == "1957-08-27"
+    assert r["rows"][12]["offset"] == 0 and r["rows"][12]["Mercury"] == "Virgo"
+    # a week follows the Moon by nakshatra pada; a too-fine step is coarsened
+    w = rectify.sweep(1957, 8, 24, 13, 55, 47.4833, 7.7356, 1.0, rectify.WEEK, step=1)
+    assert any(c["key"] == "moon_nak" for c in w["changes"]) and len(w["rows"]) <= 401

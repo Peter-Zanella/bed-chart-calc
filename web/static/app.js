@@ -620,9 +620,14 @@ $("#prashna-form").addEventListener("submit", async e => {
   }
 });
 
-// ── Birth time rectification ────────────────────────────────────────────────
-const RT_COLS = [["lagna", "Lagna"], ["d9", "D9"], ["d10", "D10"], ["d3", "D3"], ["d4", "D4"], ["moon_nak", "Moon"]];
-const fmtMin = m => m >= 60 ? `${Math.floor(m / 60)} h ${Math.round(m % 60)} min` : `${m < 10 ? m.toFixed(1) : Math.round(m)} min`;
+// ── Birth time rectification / observation over time ────────────────────────
+const fmtMin = m => {
+  m = Math.abs(m);
+  if (m >= 1440) { const d = Math.floor(m / 1440), h = Math.round((m % 1440) / 60);
+                   return d >= 10 || !h ? `${Math.round(m / 1440)} d` : `${d} d ${h} h`; }
+  return m >= 60 ? `${Math.floor(m / 60)} h` + (Math.round(m % 60) ? ` ${Math.round(m % 60)} min` : "") : `${m < 10 && !Number.isInteger(m) ? m.toFixed(1) : Math.round(m)} min`;
+};
+const fmtOff = m => (m > 0 ? "+" : m < 0 ? "−" : "") + fmtMin(m);
 
 // local date and time shifted by whole minutes (calendar arithmetic only, the UTC offset stays)
 function shiftTime(p, min) {
@@ -641,31 +646,38 @@ async function loadRectify() {
   $("#rt-rows").innerHTML = `<p class="hint">Calculating…</p>`;
   try {
     const r = await (await postJSON("api/rectify", { ...chartBody(p), span, step })).json();
+    const days = r.mode === "days";
+    // date only where it differs from the birth date
+    const when = (date, time) => date && date !== p.date ? `${dmy(date)} ${time}` : time;
+    const [warn, care] = days ? [1440, 4320] : [5, 15];
     $("#rt-factors").innerHTML = r.factors.map(f => {
       const near = Math.min(f.minus ?? Infinity, f.plus ?? Infinity);
       const hold = f.from || f.to
-        ? `holds ${f.from || "…"} – ${f.to || "…"}` +
-          ` (${f.minus != null ? "−" + fmtMin(f.minus) : "beyond"} / ${f.plus != null ? "+" + fmtMin(f.plus) : "beyond"})`
+        ? `holds ${f.from ? when(f.from_date, f.from) : "…"} – ${f.to ? when(f.to_date, f.to) : "…"}` +
+          ` (${f.minus != null ? fmtOff(-f.minus) : "beyond"} / ${f.plus != null ? fmtOff(f.plus) : "beyond"})`
         : `steady across ± ${fmtMin(r.span)}`;
       return `<div><small>${esc(f.label)}</small><b>${esc(f.value)}</b>` +
-             `<small class="${near < 5 ? "weak" : near < 15 ? "avg" : ""}">${hold}</small></div>`;
+             `<small class="${near < warn ? "weak" : near < care ? "avg" : ""}">${hold}</small></div>`;
     }).join("");
     $("#rt-changes-h").textContent = `Changes within ± ${fmtMin(r.span)}`;
-    $("#rt-changes").innerHTML = !r.changes.length ? `<p class="muted">Nothing changes in this window.</p>` :
-      `<table><thead><tr><th>Time</th><th>Offset</th><th>What changes</th><th></th></tr></thead><tbody>` +
-      r.changes.map(c => `<tr><td>${c.at}${c.date !== p.date ? ` <small>${dmy(c.date)}</small>` : ""}</td>` +
-        `<td class="num">${c.offset > 0 ? "+" : ""}${c.offset.toFixed(1)} min</td><td>${esc(c.label)}</td>` +
+    const list = !r.changes.length ? `<p class="muted">Nothing changes in this window.</p>` :
+      `<table><thead><tr><th>${days ? "When" : "Time"}</th><th>Offset</th><th>What changes</th><th></th></tr></thead><tbody>` +
+      r.changes.map(c => `<tr><td>${when(c.date, c.at)}</td>` +
+        `<td class="num">${fmtOff(c.offset)}</td><td>${esc(c.label)}</td>` +
         `<td>${esc(c.from)} → <b>${esc(c.to)}</b></td></tr>`).join("") + `</tbody></table>`;
-    const head = `<tr><th>Time</th>${RT_COLS.map(([, l]) => `<th>${l}</th>`).join("")}<th>Dasha balance</th><th>Running now</th></tr>`;
+    // long windows list a hundred or more changes; keep the table below in view
+    $("#rt-changes").innerHTML = r.changes.length > 30
+      ? `<details><summary>Show all ${r.changes.length} changes</summary>${list}</details>` : list;
+    $("#rt-rows-h").textContent = `Every ${fmtMin(r.step)}`;
+    const head = `<tr><th>${days ? "When" : "Time"}</th>${r.columns.map(([, l]) => `<th>${esc(l)}</th>`).join("")}` +
+      `<th>Dasha balance</th><th>Running now</th></tr>`;
     let prev = null;
     const rows = r.rows.map(x => {
-      const chg = k => prev && prev[k] !== x[k] ? " chg" : "";
-      const cells = RT_COLS.map(([k]) => k === "lagna"
-        ? `<td class="${chg(k)}">${x.lagna} <small class="muted">${x.lagna_pos}</small></td>`
-        : `<td class="${chg(k)}">${esc(x[k])}</td>`).join("");
-      const out = `<tr class="${x.offset === 0 ? "cur" : ""}"><td><button class="link" data-rt="${x.date} ${x.time}">${x.time}</button>` +
-        `${x.date !== p.date ? ` <small class="muted">${dmy(x.date)}</small>` : ""}</td>${cells}` +
-        `<td>${esc(x.balance)}</td><td>${esc(x.now)}${x.antar_start ? ` <small class="muted">since ${dmy(x.antar_start)}</small>` : ""}</td></tr>`;
+      const cells = r.columns.map(([k]) =>
+        `<td class="${prev && prev[k] !== x[k] ? "chg" : ""}">${esc(x[k])}` +
+        `${x[k + "_sub"] ? ` <small class="muted">${esc(x[k + "_sub"])}</small>` : ""}</td>`).join("");
+      const out = `<tr class="${x.offset === 0 ? "cur" : ""}"><td><button class="link" data-rt="${x.date} ${x.time}">${when(x.date, x.time)}</button></td>` +
+        `${cells}<td>${esc(x.balance)}</td><td>${esc(x.now)}${x.antar_start ? ` <small class="muted">since ${dmy(x.antar_start)}</small>` : ""}</td></tr>`;
       prev = x; return out;
     }).join("");
     $("#rt-rows").innerHTML = `<table class="rect"><thead>${head}</thead><tbody>${rows}</tbody></table>`;
