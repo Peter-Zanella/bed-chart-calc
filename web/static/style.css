@@ -124,6 +124,12 @@ footer { text-align: center; color: var(--mute); font-size: .8rem; padding: 1rem
 tr.outer td:first-child { font-style: italic; }
 .c-upa { fill: var(--upa); font-weight: 400; }
 tr.upa b { color: var(--upa); }
+.upa-info { margin-top: .75rem; }
+.upa-info summary { cursor: pointer; color: var(--accent); }
+.upa-info dl { display: grid; grid-template-columns: max-content 1fr; gap: .35rem .9rem; margin: .5rem 0 0; }
+.upa-info dt { font-weight: 600; color: var(--upa); }
+.upa-info dd { margin: 0; }
+@media (max-width: 560px) { .upa-info dl { grid-template-columns: 1fr; } .upa-info dd { margin-bottom: .4rem; } }
 .c-title { fill: var(--accent); font: 700 15px Georgia, serif; }
 .c-sub { fill: var(--mute); font: 12px Georgia, serif; }
 .c-asc { stroke: var(--gold); stroke-width: 2; }
