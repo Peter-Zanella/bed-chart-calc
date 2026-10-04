@@ -174,3 +174,5 @@ table.rect button.link { font-variant-numeric: tabular-nums; }
 .shift > button:not(.link) { min-width: 44px; font-size: 1.2rem; padding: .2rem .6rem; }
 .shift select { width: auto; min-height: 40px; padding: .3rem .5rem; }
 .shift .hint { margin: 0; }
+.shift #shift-at { font-variant-numeric: tabular-nums; }
+.shift #shift-at.moved { color: var(--accent); }
