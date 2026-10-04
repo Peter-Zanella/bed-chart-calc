@@ -17,6 +17,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 import astro_engine as E  # noqa: E402
 import eclipse_db  # noqa: E402
+import eclipse_hits  # noqa: E402
 import pdf_report  # noqa: E402
 from web import rectify  # noqa: E402
 
@@ -107,6 +108,20 @@ def eclipses(start: Optional[int] = None, end: Optional[int] = None):
     y0, y1 = eclipse_db.year_range()
     return {"range": [y0, y1], "meta": eclipse_db.meta(),
             "years": _jsonable(eclipse_db.by_year(start, end))}
+
+
+class EclipseHitsIn(ChartIn):
+    year: int
+    orb: float = Field(eclipse_hits.DEFAULT_ORB, ge=0.5, le=10)
+
+
+@app.post("/api/eclipse-hits")
+def eclipse_hits_(p: EclipseHitsIn):
+    """Eclipses of one year and the natal points they hit (conjunction, opposition, square)."""
+    y0, y1 = eclipse_db.year_range()
+    year = max(y0, min(y1, p.year))
+    return {"range": [y0, y1], "year": year, "orb": p.orb,
+            "eclipses": _jsonable(eclipse_hits.for_year(_compute(p)["lons"], year, p.orb))}
 
 
 class MuhurtaIn(BaseModel):

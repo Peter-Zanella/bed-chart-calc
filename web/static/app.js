@@ -512,34 +512,40 @@ async function loadMuhurta() {
 }));
 
 // ── Eclipses ────────────────────────────────────────────────────────────────
+const ASPECT_NAME = { conjunction: "conjunct", opposition: "opposite", square: "square" };
 async function loadEclipses(year) {
   year = year || state.eclipseYear || new Date().getFullYear();
-  const input = $("#ey");
+  const input = $("#ey"), orb = +$("#e-orb").value || 3;
   try {
-    const d = await (await fetch(`api/eclipses?start=${year}&end=${year}`)).json();
-    year = Math.max(d.range[0], Math.min(d.range[1], year));
+    const r = await postJSON("api/eclipse-hits", { ...chartBody(state.params), year, orb });
+    const d = await r.json(), list = d.eclipses;
+    year = d.year;
     state.eclipseYear = year; input.value = year; input.min = d.range[0]; input.max = d.range[1];
-    const list = d.years[year] || [];
-    const natal = Object.entries(state.chart.lons);
+    const hitCount = list.filter(e => e.hits.length).length;
+    $("#eclipse-sum").innerHTML = !list.length ? "" : hitCount
+      ? `<b class="weak">${hitCount} of ${list.length}</b> eclipses in ${year} hit natal points (orb ${orb}°).`
+      : `None of the ${list.length} eclipses in ${year} hits a natal point within ${orb}°.`;
     $("#eclipses").innerHTML = !list.length ? `<p class="muted">No eclipses in ${year}.</p>` :
-      `<table><thead><tr><th>Date</th><th>Kind</th><th>Position</th><th>Nakshatra</th><th>Hits</th><th>Visible</th></tr></thead><tbody>` +
+      `<table><thead><tr><th>Date</th><th>Kind</th><th>Position</th><th>Hits</th><th>Nakshatra</th><th>Visible</th></tr></thead><tbody>` +
       list.map(e => {
-        const hits = natal.filter(([, l]) => Math.abs(((e.lon - l + 540) % 360) - 180) <= 3)
-          .map(([n]) => n === "Ascendant" ? "Lagna" : n);
+        const hits = e.hits.map(h => `<span title="${ASPECT_NAME[h.aspect]} natal ${h.point}, orb ${h.orb}°">` +
+          `${h.symbol} ${esc(h.point)} <small class="muted">${h.orb.toFixed(1)}°</small></span>`);
         return `<tr><td>${String(e.day).padStart(2, "0")}.${String(e.month).padStart(2, "0")}.${e.year} ` +
           `<small class="muted">${e.time_ut || ""} UT</small></td><td>${e.kind === "solar" ? "☀ Solar" : "☾ Lunar"}<br>` +
-          `<small class="muted">${esc(e.type || "")}</small></td><td>${esc(e.sign)} ${esc(e.deg_str)}</td>` +
-          `<td>${esc(e.nakshatra)} ${e.pada}</td><td class="${hits.length ? "weak" : "muted"}">${hits.join(", ") || "—"}</td>` +
+          `<small class="muted">${esc(e.type || "")}</small></td><td>${esc(e.sign)}<br>${esc(e.deg_str)}</td>` +
+          `<td class="${hits.length ? "weak" : "muted"}">${hits.join("<br>") || "—"}</td><td>${esc(e.nakshatra)} ${e.pada}</td>` +
           `<td>${e.visible_wadenswil ? "yes" : "no"}</td></tr>`;
       }).join("") + `</tbody></table>`;
   } catch {
     state.loaded.eclipses = false;
+    $("#eclipse-sum").innerHTML = "";
     $("#eclipses").innerHTML = `<p class="error">Could not load the eclipse list.</p>`;
   }
 }
 $("#ey").addEventListener("change", e => loadEclipses(+e.target.value));
 $("#ey-prev").addEventListener("click", () => loadEclipses(state.eclipseYear - 1));
 $("#ey-next").addEventListener("click", () => loadEclipses(state.eclipseYear + 1));
+$("#e-orb").addEventListener("change", () => loadEclipses(state.eclipseYear));
 
 // ── Compatibility ───────────────────────────────────────────────────────────
 $("#match-form").addEventListener("submit", async e => {
