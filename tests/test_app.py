@@ -129,3 +129,20 @@ def test_observe_over_a_year():
     # a week follows the Moon by nakshatra pada; a too-fine step is coarsened
     w = rectify.sweep(1957, 8, 24, 13, 55, 47.4833, 7.7356, 1.0, rectify.WEEK, step=1)
     assert any(c["key"] == "moon_nak" for c in w["changes"]) and len(w["rows"]) <= 401
+
+
+def test_eclipse_hits():
+    import eclipse_hits
+    # conjunction, opposition and both squares count; 4° is outside the 3° orb
+    h = eclipse_hits.hits(100.0, {"Sun": 101.5, "Moon": 281.0, "Mars": 10.5, "Venus": 192.0,
+                                  "Saturn": 104.0, "Ascendant": 99.0})
+    got = {(x["point"], x["aspect"]) for x in h}
+    assert got == {("Sun", "conjunction"), ("Moon", "opposition"), ("Mars", "square"),
+                   ("Venus", "square"), ("Lagna", "conjunction")}
+    assert h[0]["orb"] == 0.5
+    from fastapi.testclient import TestClient
+    from web.server import app
+    a = {"date": "1957-08-24", "time": "13:55", "lat": 47.4833, "lon": 7.7356, "tz": 1}
+    r = TestClient(app).post("/api/eclipse-hits", json={**a, "year": 2026}).json()
+    assert r["year"] == 2026 and r["orb"] == 3 and len(r["eclipses"]) >= 2
+    assert all("hits" in e for e in r["eclipses"])
