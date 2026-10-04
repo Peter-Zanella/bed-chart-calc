@@ -120,6 +120,8 @@ footer { text-align: center; color: var(--mute); font-size: .8rem; padding: 1rem
 .c-pl { fill: var(--ink); font: 600 13px ui-monospace, Menlo, monospace; }
 .c-deg { fill: var(--mute); font-weight: 400; }
 .c-tr { fill: var(--tr); }
+.c-outer { fill: var(--mute); font-style: italic; }
+tr.outer td:first-child { font-style: italic; }
 .c-title { fill: var(--accent); font: 700 15px Georgia, serif; }
 .c-sub { fill: var(--mute); font: 12px Georgia, serif; }
 .c-asc { stroke: var(--gold); stroke-width: 2; }
