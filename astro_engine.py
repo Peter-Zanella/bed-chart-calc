@@ -1594,7 +1594,9 @@ def compute_upagrahas(jd: float, lat: float, lon: float,
         if ss_next is None:
             return out
 
-        day_lord_idx = (int(sr_prev + 0.5) + 1) % 7   # 0=Sonntag … 6=Samstag
+        # 0=Sonntag … 6=Samstag; Kalendertag des Sonnenaufgangs in Ortszeit
+        # (wie vedic_day), sonst falscher Wochentag östlich von ~90° (Aufgang vor 0h UT)
+        day_lord_idx = int(sr_prev + lon / 360.0 + 1.5) % 7
         if jd < ss_next:                              # Taggeburt
             t0, t1 = sr_prev, ss_next
             start_idx = day_lord_idx

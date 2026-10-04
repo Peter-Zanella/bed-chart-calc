@@ -7,6 +7,10 @@ const ABR = { Sun: "Su", Moon: "Mo", Mars: "Ma", Mercury: "Me", Jupiter: "Ju", V
 // Uranus, Neptune, Pluto: optional, display only (chart and planet table). They are
 // not part of yogas, dashas, aspects or Shad Bala; the engine computes them separately.
 const OUTER = ["Uranus", "Neptune", "Pluto"];
+// Upagrahas: optional in D1 and D9 and as their own chart; display only, like the outer planets.
+// Sun-based first, then the time-based ones (absent without a sunrise, e.g. polar day).
+const UPA = { Gulika: "Gk", Mandi: "Md", Kala: "Kl", Mrityu: "Mr", Ardhaprahara: "Ap", Yamaghantaka: "Yk",
+              Dhuma: "Dh", Vyatipata: "Vy", Parivesha: "Pv", Indrachapa: "Ic", Upaketu: "Uk" };
 const SIGNS = ["Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo", "Libra", "Scorpio",
                "Sagittarius", "Capricorn", "Aquarius", "Pisces"];
 const SIGN_ABR = ["Ari", "Tau", "Gem", "Can", "Leo", "Vir", "Lib", "Sco", "Sag", "Cap", "Aqu", "Pis"];
@@ -23,7 +27,7 @@ const dmy = iso => { const [y, m, d] = iso.slice(0, 10).split("-"); return `${d}
 const deg = pos => pos.split("°")[0];          // "7° 48'" -> "7"
 
 const state = { chart: null, params: null, style: "south", div: "d1", tab: "chart", loaded: {},
-                outer: false };
+                outer: false, upa: false };
 const form = $("#form");
 
 // ── prefs (per device) ──────────────────────────────────────────────────────
@@ -191,19 +195,52 @@ function renderChartTab() {
   const dv = state.div;
   const place = dv === "d1" ? Object.fromEntries(Object.entries(pl).map(([n, r]) => [n, r.sign_idx]))
                             : { ...c[dv], Ascendant: c[dv + "_lagna"] };
+  if (dv === "upa") return renderUpaChart();
   const lagna = dv === "d1" ? c.lagna_idx : c[dv + "_lagna"];
   const title = { d1: "Rasi D1", d9: "Navamsa D9", d10: "Dasamsha D10", d3: "Drekkana D3",
                   d4: "Chaturthamsha D4" }[dv];
-  const by = items(place, pl), op = outerShown();
+  const by = items(place, pl), op = outerShown(), up = state.upa ? upaList() : [];
   // the engine gives the outer planets' D1 and D9 signs only
   if (dv === "d1" || dv === "d9")
     for (const [n, r] of op)
       by[dv === "d1" ? r.sign_idx : r.d9_sign_idx].push({ n, txt: ABR[n], deg: dv === "d1" ? deg(r.pos) : "",
                                                            retro: !!r.retrograde, cls: "outer" });
+  // upagrahas: the engine gives their D1 and D9 signs only
+  if (dv === "d1" || dv === "d9")
+    for (const [n, r] of up)
+      by[dv === "d1" ? r.sign_idx : r.d9_sign_idx].push({ n, txt: UPA[n], deg: dv === "d1" ? deg(r.pos) : "", cls: "upa" });
   $("#chart-box").innerHTML = chartSvg(by, lagna, title, state.params.name || "");
-  $("#chart-side").innerHTML = dv === "d1" ? planetTable(true)
+  const only = [op.length && "Uranus, Neptune and Pluto", up.length && "the upagrahas"].filter(Boolean).join(" and ");
+  $("#chart-side").innerHTML = dv === "d1" ? planetTable(true) + (up.length ? upaTable(up, true) : "")
     : `<p class="hint">${title}: each graha's sign in this division. Degrees are shown in the D1 chart.` +
-      (op.length && dv !== "d9" ? " Uranus, Neptune and Pluto are shown in D1 and D9 only." : "") + `</p>`;
+      (only && dv !== "d9" ? ` ${only[0].toUpperCase() + only.slice(1)} are shown in D1 and D9 only.` : "") + `</p>` +
+      (dv === "d9" && up.length ? upaTable(up, true, "d9") : "");
+}
+
+function upaList() {
+  const u = state.chart.upagrahas || {};
+  return Object.keys(UPA).filter(n => u[n]).map(n => [n, u[n]]);
+}
+
+// own chart: Lagna plus the upagrahas, planets left out so nothing crowds
+function renderUpaChart() {
+  const c = state.chart, up = upaList(), by = Array.from({ length: 12 }, () => []);
+  by[c.lagna_idx].push({ n: "Ascendant", txt: "As", deg: deg(c.planets.Ascendant.pos), cls: "asc" });
+  for (const [n, r] of up) by[r.sign_idx].push({ n, txt: UPA[n], deg: deg(r.pos), cls: "upa" });
+  $("#chart-box").innerHTML = chartSvg(by, c.lagna_idx, "Upagrahas", state.params.name || "");
+  $("#chart-side").innerHTML = (up.length ? upaTable(up, false) : `<p class="muted">No upagrahas for this chart.</p>`) +
+    `<p class="hint">Display only, not used in any calculation. Gulika and the time-based points use the ` +
+    `Lagna at the start of the planet's eighth of the day or night (Mandi: the middle of Saturn's part). ` +
+    `They need a sunrise, so they are missing on polar day or night.</p>`;
+}
+
+function upaTable(up, compact, div = "d1") {
+  const rows = up.map(([n, r]) => `<tr class="upa"><td><b>${UPA[n]}</b> ${esc(r.name || n)}</td>` +
+    (div === "d9" ? `<td>${r.d9_sign}</td>` : `<td>${r.sign}</td><td class="num">${r.pos}</td>` +
+      (compact ? "" : `<td>${r.nakshatra} ${r.pada}</td>`) + `<td class="num">${r.house}</td>`) + `</tr>`).join("");
+  return `<div class="tbl"><table><thead><tr><th>Upagraha</th>` +
+    (div === "d9" ? `<th>D9 sign</th>` : `<th>Sign</th><th>Degree</th>` + (compact ? "" : `<th>Nakshatra</th>`) +
+      `<th>House</th>`) + `</tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
 function outerShown() {
@@ -213,6 +250,8 @@ function outerShown() {
 function chartSvg(by, lagna, title, sub) {
   return state.style === "north" ? northSvg(by, lagna, title) : southSvg(by, lagna, title, sub);
 }
+
+const PL_CLS = { tr: " c-tr", outer: " c-outer", upa: " c-upa" };
 
 function label(it) {
   const r = it.retro && it.n !== "Rahu" && it.n !== "Ketu" ? `<tspan class="r">R</tspan>` : "";
@@ -232,7 +271,7 @@ function southSvg(by, lagna, title, sub) {
     s += `<text x="${x + 96}" y="${y + 14}" text-anchor="end" class="c-sign">${SIGN_ABR[si]}</text>`;
     const list = by[si], lh = Math.min(15, 70 / Math.max(list.length, 1));
     list.forEach((it, i) => {
-      s += `<text x="${x + 7}" y="${y + 32 + i * lh}" class="c-pl${it.cls === "tr" ? " c-tr" : it.cls === "outer" ? " c-outer" : ""}"` +
+      s += `<text x="${x + 7}" y="${y + 32 + i * lh}" class="c-pl${PL_CLS[it.cls] || ""}"` +
            `${lh < 15 ? ` style="font-size:${Math.max(10, lh - 1)}px"` : ""}>${label(it)}</text>`;
     });
   }
@@ -255,11 +294,12 @@ function northSvg(by, lagna, title) {
     const si = (lagna + h - 1) % 12, list = by[si];
     const [nx, ny] = N_NUM[h], [tx, ty] = N_TXT[h];
     s += `<text x="${nx}" y="${ny}" text-anchor="middle" class="c-sign">${si + 1}</text>`;
-    const lh = [1, 4, 7, 10].includes(h) ? 15 : 13;
+    const room = [1, 4, 7, 10].includes(h) ? 105 : 60;    // vertical space in the diamond / triangle
+    const lh = Math.min([1, 4, 7, 10].includes(h) ? 15 : 13, room / Math.max(list.length, 1));
     const y0 = ty - ((list.length - 1) * lh) / 2 + 4;
     list.forEach((it, i) => {
-      s += `<text x="${tx}" y="${y0 + i * lh}" text-anchor="middle" class="c-pl${it.cls === "tr" ? " c-tr" : it.cls === "outer" ? " c-outer" : ""}"` +
-           `${lh < 15 ? ` style="font-size:12px"` : ""}>${label(it)}</text>`;
+      s += `<text x="${tx}" y="${y0 + i * lh}" text-anchor="middle" class="c-pl${PL_CLS[it.cls] || ""}"` +
+           `${lh < 15 ? ` style="font-size:${Math.max(9, Math.min(12, lh - 1))}px"` : ""}>${label(it)}</text>`;
     });
   }
   return s + "</svg>";
@@ -859,6 +899,15 @@ segment("#seg-div", "div", renderChartTab);
   b.addEventListener("click", () => {
     set(!state.outer); pref("outer", state.outer ? "1" : "0");
     if (state.chart) { renderChartTab(); renderPlanets(); }
+  });
+}
+{
+  const b = $("#btn-upa");
+  const set = v => { state.upa = v; b.setAttribute("aria-pressed", v); };
+  set(pref("upa") === "1");
+  b.addEventListener("click", () => {
+    set(!state.upa); pref("upa", state.upa ? "1" : "0");
+    if (state.chart) renderChartTab();
   });
 }
 

@@ -103,9 +103,11 @@
             <button data-v="d10">D10</button>
             <button data-v="d3">D3</button>
             <button data-v="d4">D4</button>
+            <button data-v="upa" title="Upagraha chart: Lagna and the upagrahas on their own">Upa</button>
           </div>
           <div class="seg">
             <button id="btn-outer" aria-pressed="false" title="Show Uranus, Neptune and Pluto (display only, not used in any calculation)">Ur Ne Pl</button>
+            <button id="btn-upa" aria-pressed="false" title="Show the upagrahas in D1 and D9 (display only, not used in any calculation)">Upagrahas</button>
           </div>
         </div>
         <div class="split">
@@ -121,6 +123,23 @@
           <h2>Planets</h2><div class="tbl" id="planets"></div>
           <h2>Houses</h2><div class="tbl" id="houses"></div>
           <h2>Upagrahas and outer planets</h2><div class="tbl" id="upagrahas"></div>
+          <details class="upa-info">
+            <summary>What the upagrahas mean</summary>
+            <p>Upagrahas ("sub-planets") are sensitive points, not bodies in the sky. Five follow from the Sun's longitude; the other six come from the eighths of the day or night, each ruled by a planet, and take the Lagna at that moment. Classically they are malefic and harm the house they occupy, above all when they join the Lagna, the Sun or the Moon. Yamaghaṇṭaka is the benign exception. They refine a reading; they don't outweigh the planets. The app shows them for reference only and uses them in no calculation.</p>
+            <dl>
+              <dt>Gulika (Gk)</dt><dd>The "son of Saturn" and the most used upagraha. Shows where obstacles, delays, fear and karmic burdens sit; its sign lord matters for health and longevity.</dd>
+              <dt>Māndi (Md)</dt><dd>Often treated as the same point as Gulika (here: the middle of Saturn's part). Hardship, chronic trouble, poison in the classical sense.</dd>
+              <dt>Kāla (Kl)</dt><dd>Sun's part, "time". Misfortune, delays, endings.</dd>
+              <dt>Mṛtyu (Mr)</dt><dd>Mars' part, "death". Accidents, injury, sudden danger.</dd>
+              <dt>Ardhaprahara (Ap)</dt><dd>Mercury's part, "half watch". Obstacles in work, trade and communication.</dd>
+              <dt>Yamaghaṇṭaka (Yk)</dt><dd>Jupiter's part. Rather benign, acts like a mild Jupiter and favours undertakings.</dd>
+              <dt>Dhūma (Dh)</dt><dd>"Smoke". Heat, fire, anger, grief.</dd>
+              <dt>Vyatīpāta (Vy)</dt><dd>"Calamity". Sudden reversals and accidents.</dd>
+              <dt>Pariveṣa (Pv)</dt><dd>"Halo" around Sun or Moon. Mixed and milder; some read it as protection.</dd>
+              <dt>Indrachāpa (Ic)</dt><dd>"Rainbow". Mixed: show and illusion, sometimes deception.</dd>
+              <dt>Upaketu (Uk)</dt><dd>"Comet", acts like Ketu. Sudden loss, separation, detachment. Always 30° behind the Sun.</dd>
+            </dl>
+          </details>
         </div>
         <div class="sub" data-subpanel="yogas" hidden>
           <p class="hint">Common Parashari yogas from the D1 (whole-sign houses, graha drishti), plus Vipareeta and Parivartana yogas in D9 and D10. Conventions vary by school; a study aid, not a verdict.</p>
