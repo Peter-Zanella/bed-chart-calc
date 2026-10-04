@@ -1,5 +1,5 @@
 // Keeps the app shell available offline; chart calculations always go to the server.
-const CACHE = "jyotisa-v10";
+const CACHE = "jyotisa-v11";
 const SHELL = ["./", "index.html", "style.css", "app.js", "manifest.webmanifest", "icon.svg", "icon-192.png"];
 // a new version takes over at once instead of waiting until every tab of the
 // installed app is closed (which on a phone may never happen)

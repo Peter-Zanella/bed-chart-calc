@@ -1,14 +1,14 @@
 :root {
   --paper: #fbf7ef; --card: #ffffff; --sand: #f3ead8; --ink: #2b2118; --mute: #7d6d52;
   --line: #d9c9a8; --accent: #7b2d26; --gold: #9a7b2e; --lagna: #fdf3df;
-  --good: #2e7d4f; --bad: #9a342c; --tr: #2f6f8a;
+  --good: #2e7d4f; --bad: #9a342c; --tr: #2f6f8a; --upa: #6b4a8f;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
   :root {
     --paper: #1b1712; --card: #25201a; --sand: #2e271f; --ink: #efe6d6; --mute: #b3a58c;
     --line: #4a3f31; --accent: #e08a78; --gold: #d2b064; --lagna: #3a2f1f;
-    --good: #6cc592; --bad: #ef8a7e; --tr: #7fc0da;
+    --good: #6cc592; --bad: #ef8a7e; --tr: #7fc0da; --upa: #c4a4e6;
     color-scheme: dark;
   }
 }
@@ -122,6 +122,8 @@ footer { text-align: center; color: var(--mute); font-size: .8rem; padding: 1rem
 .c-tr { fill: var(--tr); }
 .c-outer { fill: var(--mute); font-style: italic; }
 tr.outer td:first-child { font-style: italic; }
+.c-upa { fill: var(--upa); font-weight: 400; }
+tr.upa b { color: var(--upa); }
 .c-title { fill: var(--accent); font: 700 15px Georgia, serif; }
 .c-sub { fill: var(--mute); font: 12px Georgia, serif; }
 .c-asc { stroke: var(--gold); stroke-width: 2; }

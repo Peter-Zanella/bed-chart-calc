@@ -146,3 +146,29 @@ def test_eclipse_hits():
     r = TestClient(app).post("/api/eclipse-hits", json={**a, "year": 2026}).json()
     assert r["year"] == 2026 and r["orb"] == 3 and len(r["eclipses"]) >= 2
     assert all("hits" in e for e in r["eclipses"])
+
+
+def test_upagrahas_liestal_1957():
+    c = E.generate_chart(1957, 8, 24, 13, 55, 47.4833, 7.7356, 1.0, "Liestal")
+    u = c["upagrahas"]
+    assert len(u) == 11
+    # Saturday day birth: Saturn rules the first eighth, so Gulika is the Lagna near sunrise
+    assert (u["Gulika"]["sign"], u["Gulika"]["pos"], u["Gulika"]["house"]) == ("Leo", "7° 28'", 10)
+    assert (u["Mandi"]["sign"], u["Mandi"]["pos"]) == ("Leo", "16° 53'")
+    assert (u["Dhuma"]["sign"], u["Dhuma"]["pos"]) == ("Sagittarius", "21° 08'")
+    # Upaketu + 30° = Sun
+    assert abs((u["Upaketu"]["lon"] + 30 - c["planets"]["Sun"]["lon"]) % 360) < 0.01
+
+
+def test_upagrahas_weekday_east_of_90():
+    # Tokyo: sunrise is before 0h UT, the day lord must still be the local weekday (Wednesday)
+    c = E.generate_chart(2000, 1, 5, 10, 0, 35.68, 139.69, 9.0, "Tokyo")
+    assert c["panchang"]["vara"] == "Wednesday"
+    d = c["upagrahas"]["Gulika"]
+    import swisseph as swe
+    jd = swe.julday(2000, 1, 5, 1.0)
+    sr = E._sun_rise_set(jd - 1.0, 35.68, 139.69, swe.CALC_RISE)
+    ss = E._sun_rise_set(sr + 0.01, 35.68, 139.69, swe.CALC_SET)
+    t = sr + 3 * (ss - sr) / 8                      # Wednesday: Me Ju Ve Sa, Saturn 4th
+    swe.set_sid_mode(swe.SIDM_LAHIRI, 0, 0)
+    assert abs(d["lon"] - E._swe_asc(t, 35.68, 139.69)) < 0.01
