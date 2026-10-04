@@ -170,3 +170,7 @@ table.rect td { font-variant-numeric: tabular-nums; }
 table.rect td.chg { background: var(--lagna); color: var(--accent); font-weight: 600; }
 table.rect tr.cur td { font-weight: 700; border-top: 2px solid var(--accent); border-bottom: 2px solid var(--accent); }
 table.rect button.link { font-variant-numeric: tabular-nums; }
+.shift { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; margin-top: .5rem; }
+.shift > button:not(.link) { min-width: 44px; font-size: 1.2rem; padding: .2rem .6rem; }
+.shift select { width: auto; min-height: 40px; padding: .3rem .5rem; }
+.shift .hint { margin: 0; }

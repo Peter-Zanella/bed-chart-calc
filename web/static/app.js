@@ -107,11 +107,14 @@ form.addEventListener("submit", async e => {
 });
 
 // ── compute ─────────────────────────────────────────────────────────────────
-async function calculate(p, { push = true } = {}) {
+// shifted: an exploration step away from the entered birth time (state.origin stays)
+async function calculate(p, { push = true, shifted = false } = {}) {
   const btn = $("#btn-calc"); btn.disabled = true; btn.textContent = "Calculating…";
+  state.busy = true; $$(".shift button").forEach(b => { b.disabled = true; });
   try {
     const r = await postJSON("api/chart", chartBody(p));
     state.chart = await r.json(); state.params = p; state.loaded = {}; state.match = null;
+    if (!shifted || !state.origin) state.origin = p;
     if (push) history.replaceState(null, "", "#" + toHash(p));
     render();
   } catch (e) {
@@ -119,6 +122,7 @@ async function calculate(p, { push = true } = {}) {
     $("#form-card").hidden = false;
   } finally {
     btn.disabled = false; btn.textContent = "Calculate chart";
+    state.busy = false; $$(".shift button").forEach(b => { b.disabled = false; });
   }
 }
 
@@ -148,6 +152,9 @@ function render() {
     ["Dasha", [cur.maha, cur.antar, cur.pratyantar].filter(Boolean).join(" › ") || "—"],
   ];
   $("#chips").innerHTML = chips.map(([k, v]) => `<span class="chip">${k} <b>${esc(v)}</b></span>`).join("");
+  const o = state.origin, moved = o && (o.date !== p.date || o.time !== p.time);
+  $("#shift-note").hidden = $("#shift-reset").hidden = !moved;
+  if (moved) $("#shift-note").textContent = `birth ${dmy(o.date)} ${o.time}`;
   $("#s-question").hidden = !p.question;
   $("#s-question").textContent = p.question ? `Question: ${p.question}` : "";
   document.title = `${p.name || "Chart"} · Vedic Birth Chart`;
@@ -636,9 +643,25 @@ function shiftTime(p, min) {
   return { ...p, date: t.slice(0, 10), time: t.slice(11, 16) };
 }
 function useTime(p) {
+  if (state.busy) return;
   fillForm(p); form.dataset.placeFor = placeKey();
-  calculate(p);
+  calculate(p, { shifted: true });
 }
+// calendar step: months and years keep the day of month, clamped to the month's end
+function shiftBy(p, n, unit) {
+  const mins = { minute: 1, hour: 60, day: 1440, week: 10080 }[unit];
+  if (mins) return shiftTime(p, n * mins);
+  const [y, mo, d] = p.date.split("-").map(Number);
+  const m0 = (mo - 1) + n * (unit === "year" ? 12 : 1);
+  const last = new Date(Date.UTC(y, m0 + 1, 0)).getUTCDate();
+  const t = new Date(Date.UTC(y, m0, Math.min(d, last))).toISOString();
+  return { ...p, date: t.slice(0, 10) };
+}
+$$("[data-shift]").forEach(b => b.addEventListener("click", () =>
+  useTime(shiftBy(state.params, +b.dataset.shift, $("#shift-unit").value))));
+$("#shift-unit").addEventListener("change", () => pref("shift_unit", $("#shift-unit").value));
+$("#shift-unit").value = pref("shift_unit") || "month";
+$("#shift-reset").addEventListener("click", () => { if (state.origin) useTime(state.origin); });
 
 async function loadRectify() {
   const p = state.params, span = +$("#rt-span").value, step = +$("#rt-step").value;

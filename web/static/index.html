@@ -66,6 +66,17 @@
       </div>
       <p class="hint" id="s-question" hidden></p>
       <div class="chips" id="chips"></div>
+      <!-- move the whole chart through time: every tab follows -->
+      <div class="shift" role="group" aria-label="Move the chart in time">
+        <button type="button" data-shift="-1" aria-label="Earlier">‹</button>
+        <select id="shift-unit" aria-label="Step">
+          <option value="minute">1 minute</option><option value="hour">1 hour</option><option value="day">1 day</option>
+          <option value="week">1 week</option><option value="month" selected>1 month</option><option value="year">1 year</option>
+        </select>
+        <button type="button" data-shift="1" aria-label="Later">›</button>
+        <span class="hint" id="shift-note" hidden></span>
+        <button class="link" id="shift-reset" hidden>Back to birth</button>
+      </div>
     </section>
 
     <section id="result" hidden>
