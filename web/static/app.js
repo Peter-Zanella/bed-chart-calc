@@ -154,7 +154,9 @@ function render() {
   $("#chips").innerHTML = chips.map(([k, v]) => `<span class="chip">${k} <b>${esc(v)}</b></span>`).join("");
   const o = state.origin, moved = o && (o.date !== p.date || o.time !== p.time);
   $("#shift-note").hidden = $("#shift-reset").hidden = !moved;
-  if (moved) $("#shift-note").textContent = `birth ${dmy(o.date)} ${o.time}`;
+  $("#shift-at").textContent = `${dmy(p.date)} ${p.time}`;
+  $("#shift-at").classList.toggle("moved", !!moved);
+  if (moved) $("#shift-note").textContent = `${shiftLabel(o, p)} from birth (${dmy(o.date)} ${o.time})`;
   $("#s-question").hidden = !p.question;
   $("#s-question").textContent = p.question ? `Question: ${p.question}` : "";
   document.title = `${p.name || "Chart"} · Vedic Birth Chart`;
@@ -647,6 +649,18 @@ function useTime(p) {
   fillForm(p); form.dataset.placeFor = placeKey();
   calculate(p, { shifted: true });
 }
+// "+1 year", "−3 months", "+12 days", "+2 h" between the birth time and the shown time
+function shiftLabel(o, p) {
+  const [y1, m1, d1] = o.date.split("-").map(Number), [y2, m2, d2] = p.date.split("-").map(Number);
+  const sgn = n => (n > 0 ? "+" : "−") + Math.abs(n);
+  const plural = (n, w) => `${sgn(n)} ${w}${Math.abs(n) === 1 ? "" : "s"}`;
+  const months = (y2 - y1) * 12 + (m2 - m1);
+  if (months && d1 === d2 && o.time === p.time)
+    return months % 12 ? plural(months, "month") : plural(months / 12, "year");
+  const t = q => Date.parse(`${q.date}T${q.time}:00Z`) / 60000, min = t(p) - t(o);
+  return min % 1440 ? (Math.abs(min) < 1440 && min % 60 ? `${sgn(min)} min` : `${sgn(Math.round(min / 60))} h`)
+                    : plural(min / 1440, "day");
+}
 // calendar step: months and years keep the day of month, clamped to the month's end
 function shiftBy(p, n, unit) {
   const mins = { minute: 1, hour: 60, day: 1440, week: 10080 }[unit];
@@ -665,7 +679,7 @@ $("#shift-reset").addEventListener("click", () => { if (state.origin) useTime(st
 
 async function loadRectify() {
   const p = state.params, span = +$("#rt-span").value, step = +$("#rt-step").value;
-  $("#rt-time").textContent = p.time;
+  $("#rt-time").textContent = state.origin && state.origin.date !== p.date ? `${dmy(p.date)} ${p.time}` : p.time;
   $("#rt-rows").innerHTML = `<p class="hint">Calculating…</p>`;
   try {
     const r = await (await postJSON("api/rectify", { ...chartBody(p), span, step })).json();
