@@ -172,3 +172,16 @@ def test_upagrahas_weekday_east_of_90():
     t = sr + 3 * (ss - sr) / 8                      # Wednesday: Me Ju Ve Sa, Saturn 4th
     swe.set_sid_mode(swe.SIDM_LAHIRI, 0, 0)
     assert abs(d["lon"] - E._swe_asc(t, 35.68, 139.69)) < 0.01
+
+
+def test_equal_bhava_liestal_1957():
+    # Äqui-Bhava: houses of 30° centred on the Lagna degree (Scorpio 8°42');
+    # Moon at Cancer 24°14' lies past the 9th bhava's end (Cancer 23°42') and moves to the 10th
+    c = E.generate_chart(1957, 8, 24, 13, 55, 47.4833, 7.7356, 1.0, "Liestal")
+    moved = {n: (p["house"], p["bhava"]) for n, p in c["planets"].items()
+             if n != "Ascendant" and p["house"] != p["bhava"]}
+    assert moved == {"Moon": (9, 10)}
+    assert c["bhava"]["place"]["Moon"] == E.SIGNS.index("Leo")
+    from fastapi.testclient import TestClient
+    from web.server import app
+    assert 'data-v="bhava"' in TestClient(app).get("/").text

@@ -124,6 +124,8 @@ footer { text-align: center; color: var(--mute); font-size: .8rem; padding: 1rem
 tr.outer td:first-child { font-style: italic; }
 .c-upa { fill: var(--upa); font-weight: 400; }
 tr.upa b { color: var(--upa); }
+.c-shift { fill: var(--accent); }
+tr.moved td:first-child, tr.moved b { color: var(--accent); font-weight: 600; }
 .upa-info { margin-top: .75rem; }
 .upa-info summary { cursor: pointer; color: var(--accent); }
 .upa-info dl { display: grid; grid-template-columns: max-content 1fr; gap: .35rem .9rem; margin: .5rem 0 0; }
