@@ -196,6 +196,7 @@ function renderChartTab() {
   const place = dv === "d1" ? Object.fromEntries(Object.entries(pl).map(([n, r]) => [n, r.sign_idx]))
                             : { ...c[dv], Ascendant: c[dv + "_lagna"] };
   if (dv === "upa") return renderUpaChart();
+  if (dv === "bhava") return renderBhavaChart();
   const lagna = dv === "d1" ? c.lagna_idx : c[dv + "_lagna"];
   const title = { d1: "Rasi D1", d9: "Navamsa D9", d10: "Dasamsha D10", d3: "Drekkana D3",
                   d4: "Chaturthamsha D4" }[dv];
@@ -234,6 +235,43 @@ function renderUpaChart() {
     `They need a sunrise, so they are missing on polar day or night.</p>`;
 }
 
+// Äqui-Bhava (Bhava Chalit): equal 30° houses with the Lagna degree as each bhava's
+// middle. The engine gives each graha's bhava; a graha within 15° of a sign edge on
+// the far side from the Lagna degree moves into the neighbouring house.
+const fmtLon = lon => {
+  const l = ((lon % 360) + 360) % 360, d = l % 30, m = Math.floor((d % 1) * 60 + 1e-6);
+  return `${SIGN_ABR[Math.floor(l / 30)]} ${Math.floor(d)}°${String(m).padStart(2, "0")}′`;
+};
+function renderBhavaChart() {
+  const c = state.chart, pl = c.planets, asc = pl.Ascendant.lon, by = Array.from({ length: 12 }, () => []);
+  by[c.lagna_idx].push({ n: "Ascendant", txt: "As", deg: deg(pl.Ascendant.pos), cls: "asc" });
+  for (const n of PLANETS) {
+    const r = pl[n];
+    if (!r?.bhava) continue;
+    by[(c.lagna_idx + r.bhava - 1) % 12].push({ n, txt: ABR[n], deg: deg(r.pos), retro: !!r.retrograde,
+                                               cls: r.bhava !== r.house ? "shift" : "" });
+  }
+  $("#chart-box").innerHTML = chartSvg(by, c.lagna_idx, "Äqui-Bhava", state.params.name || "");
+  const moved = PLANETS.filter(n => pl[n]?.bhava && pl[n].bhava !== pl[n].house);
+  const rows = PLANETS.filter(n => pl[n]?.bhava).map(n => {
+    const r = pl[n], sh = r.bhava !== r.house;
+    return `<tr${sh ? ` class="moved"` : ""}><td>${n}</td><td>${r.sign} ${r.pos}</td>` +
+      `<td class="num">${r.house}</td><td class="num">${sh ? `<b>${r.bhava}</b>` : r.bhava}</td></tr>`;
+  }).join("");
+  const spans = Array.from({ length: 12 }, (_, i) => {
+    const mid = asc + i * 30;
+    return `<tr><td class="num">${i + 1}</td><td>${fmtLon(mid - 15)}</td><td>${fmtLon(mid)}</td></tr>`;
+  }).join("");
+  $("#chart-side").innerHTML =
+    `<p class="hint">Equal houses of 30°, each centred on the Lagna degree (${c.lagna} ${c.lagna_pos}). ` +
+    (moved.length ? `Shifted from their rasi house: <b>${moved.join(", ")}</b>.`
+                  : `No graha changes house against the Rasi chart.`) + `</p>` +
+    `<div class="tbl"><table><thead><tr><th>Graha</th><th>Rasi</th><th>Rasi house</th><th>Bhava</th></tr></thead>` +
+    `<tbody>${rows}</tbody></table></div>` +
+    `<details class="upa-info"><summary>Bhava boundaries</summary><div class="tbl"><table><thead><tr>` +
+    `<th>Bhava</th><th>Begins</th><th>Middle</th></tr></thead><tbody>${spans}</tbody></table></div></details>`;
+}
+
 function upaTable(up, compact, div = "d1") {
   const rows = up.map(([n, r]) => `<tr class="upa"><td><b>${UPA[n]}</b> ${esc(r.name || n)}</td>` +
     (div === "d9" ? `<td>${r.d9_sign}</td>` : `<td>${r.sign}</td><td class="num">${r.pos}</td>` +
@@ -251,7 +289,7 @@ function chartSvg(by, lagna, title, sub) {
   return state.style === "north" ? northSvg(by, lagna, title) : southSvg(by, lagna, title, sub);
 }
 
-const PL_CLS = { tr: " c-tr", outer: " c-outer", upa: " c-upa" };
+const PL_CLS = { tr: " c-tr", outer: " c-outer", upa: " c-upa", shift: " c-shift" };
 
 function label(it) {
   const r = it.retro && it.n !== "Rahu" && it.n !== "Ketu" ? `<tspan class="r">R</tspan>` : "";
